@@ -36,6 +36,12 @@ jobs:
       - name: Sync Capacitor
         run: npx cap sync android
 
+      - name: Fix Java version in generated Gradle files
+        run: |
+          find android -name "*.gradle" -exec sed -i 's/JavaVersion.VERSION_21/JavaVersion.VERSION_17/g' {} \;
+          find android -name "*.gradle" -exec sed -i 's/sourceCompatibility = 21/sourceCompatibility = 17/g' {} \;
+          find android -name "*.gradle" -exec sed -i 's/targetCompatibility = 21/targetCompatibility = 17/g' {} \;
+
       - name: Make gradlew executable
         run: chmod +x android/gradlew
 
