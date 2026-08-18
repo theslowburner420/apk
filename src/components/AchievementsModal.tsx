@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { useGame } from '../context/GameContext';
 import { ACHIEVEMENTS as ALL_ACHIEVEMENTS } from '../constants/achievements';
 import { ALL_CARDS } from '../data/cards';
-import { Trophy, X, CheckCircle2, Lock, Medal, Star, Package, Gem, Shield, Search, Filter, LayoutGrid, ListFilter, Coins } from 'lucide-react';
+import { Trophy, X, CheckCircle, Lock, Medal, Star, Package, Gem, Shield, Search, Filter, LayoutGrid, ListFilter, Coins } from 'lucide-react';
 
 interface AchievementsModalProps {
   isOpen: boolean;
@@ -85,12 +85,12 @@ export default function AchievementsModal({ isOpen, onClose }: AchievementsModal
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 sm:gap-6">
                 <div className="flex items-center justify-between w-full sm:w-auto">
                   <div className="flex items-center gap-2 sm:gap-3">
-                    <div className="p-1.5 sm:p-2 bg-amber-500/10 rounded-lg">
-                      <Trophy className="text-amber-500" size={18} sm:size={24} />
+                    <div className="p-1.5 sm:p-2 bg-amber-500/10 rounded-lg shrink-0">
+                      <Trophy className="text-amber-500 w-5 h-5 sm:w-6 sm:h-6" />
                     </div>
                     <div>
-                      <h2 className="text-xl sm:text-3xl font-black uppercase italic tracking-tighter">Achievements</h2>
-                      <p className="hidden sm:block text-[8px] sm:text-xs text-zinc-500 font-bold uppercase tracking-widest">Track your Hoops Collector legacy</p>
+                      <h2 className="text-lg sm:text-3xl font-black uppercase italic tracking-tighter leading-none">Achievements</h2>
+                      <p className="hidden sm:block text-[8px] sm:text-xs text-zinc-500 font-bold uppercase tracking-widest mt-1">Track your Hoops Collector legacy</p>
                     </div>
                   </div>
                   <button 
@@ -220,7 +220,7 @@ export default function AchievementsModal({ isOpen, onClose }: AchievementsModal
                             <div className={`w-10 h-10 sm:w-12 sm:h-12 rounded-xl flex items-center justify-center transition-all ${
                               isUnlocked ? 'bg-amber-500 text-black' : 'bg-zinc-900 text-zinc-700'
                             }`}>
-                              <ach.icon size={20} sm:size={24} />
+                              <ach.icon className="w-5 h-5 sm:w-6 sm:h-6" />
                             </div>
                             <div className={`px-1.5 sm:px-2 py-0.5 rounded-full text-[7px] sm:text-[8px] font-black uppercase tracking-tighter border ${LEVEL_COLORS[level as keyof typeof LEVEL_COLORS]}`}>
                               {level}
@@ -233,7 +233,7 @@ export default function AchievementsModal({ isOpen, onClose }: AchievementsModal
                               <h3 className={`text-xs sm:text-sm font-black uppercase italic tracking-tight truncate ${isUnlocked ? 'text-white' : 'text-zinc-500'}`}>
                                 {ach.title}
                               </h3>
-                              {isUnlocked && <CheckCircle2 size={14} sm:size={16} className="text-green-500 shrink-0" />}
+                              {isUnlocked && <CheckCircle className="text-green-500 shrink-0 w-3.5 h-3.5 sm:w-4 sm:h-4" />}
                             </div>
                             <p className="text-[9px] sm:text-[10px] text-zinc-500 font-medium leading-tight line-clamp-2 mb-3 sm:mb-4">
                               {ach.description}
@@ -261,13 +261,13 @@ export default function AchievementsModal({ isOpen, onClose }: AchievementsModal
                               {ach.rewardCoins > 0 && (
                                 <div className="flex items-center gap-1 px-1.5 sm:px-2 py-0.5 sm:py-1 bg-zinc-900/50 rounded-lg border border-zinc-800/50">
                                   <span className="text-[8px] sm:text-[10px] font-black text-amber-500 italic">+{ach.rewardCoins}</span>
-                                  <Coins size={8} sm:size={10} className="text-amber-500" />
+                                  <Coins className="text-amber-500 w-2 h-2 sm:w-2.5 sm:h-2.5" />
                                 </div>
                               )}
                               {ach.rewardPacks && ach.rewardPacks.map((p, pIdx) => (
                                 <div key={pIdx} className="flex items-center gap-1 px-1.5 sm:px-2 py-0.5 sm:py-1 bg-zinc-900/50 rounded-lg border border-zinc-800/50">
                                   <span className="text-[8px] sm:text-[10px] font-black text-zinc-400 italic truncate max-w-[60px] sm:max-w-none">{p.name} {p.count && p.count > 1 ? `x${p.count}` : ''}</span>
-                                  <Package size={8} sm:size={10} className="text-zinc-500" />
+                                  <Package className="text-zinc-500 w-2 h-2 sm:w-2.5 sm:h-2.5" />
                                 </div>
                               ))}
                             </div>
@@ -276,7 +276,7 @@ export default function AchievementsModal({ isOpen, onClose }: AchievementsModal
 
                       {/* Level Indicator Icon in corner */}
                       <div className="absolute top-2 right-2 sm:top-3 sm:right-3 opacity-10 pointer-events-none">
-                        <LevelIcon size={32} sm:size={40} />
+                        <LevelIcon className="w-8 h-8 sm:w-10 sm:h-10" />
                       </div>
 
                       {/* Completed Overlay */}
@@ -299,7 +299,7 @@ export default function AchievementsModal({ isOpen, onClose }: AchievementsModal
             {/* Footer */}
             <div className="p-4 sm:p-6 border-t border-zinc-900 bg-zinc-900/20 flex items-center justify-center gap-3 sm:gap-4 shrink-0">
               <div className="flex items-center gap-2">
-                <Medal size={12} sm:size={14} className="text-zinc-600" />
+                <Medal className="text-zinc-600 w-3 h-3 sm:w-3.5 sm:h-3.5" />
                 <span className="text-[8px] sm:text-[9px] text-zinc-600 uppercase tracking-[0.2em] font-black">
                   Hoops Collector Hall of Fame
                 </span>

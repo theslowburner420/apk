@@ -1,18 +1,20 @@
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { useGame } from '../context/GameContext';
 import { ALL_CARDS } from '../data/cards';
+import { NBA_TEAMS } from '../data/nbaTeams';
 import { motion, AnimatePresence } from 'motion/react';
 import { Card, Rarity } from '../types';
 import { Search, LayoutGrid, Filter, X, ChevronDown, Trophy } from 'lucide-react';
 import CardDetailModal from '../components/CardDetailModal';
 import CardItem from '../components/CardItem';
 import AchievementsModal from '../components/AchievementsModal';
+import { isScreamEditionActive, isScreamFilterPermanentlyAvailable } from '../constants/screamEdition';
 
 type FilterType = Rarity | 'All';
 type SortType = 'Number' | 'OVR' | 'Name' | 'Team';
 
 export default function CollectionView() {
-  const { collection, unlockedAchievements, addCoins, addToCollection, setPremium, resetGame } = useGame();
+  const { collection, customCards = [], unlockedAchievements, addCoins, addToCollection, setPremium, resetGame, updateGameStateAsync, isPremium } = useGame();
   const [activeFilter, setActiveFilter] = useState<FilterType>('All');
   const [categoryFilter, setCategoryFilter] = useState<string>('All');
   const [teamFilter, setTeamFilter] = useState<string>('All');
@@ -23,11 +25,30 @@ export default function CollectionView() {
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [selectedCard, setSelectedCard] = useState<Card | null>(null);
   const [isFilterOpen, setIsFilterOpen] = useState(false);
+  const [filterTab, setFilterTab] = useState<'sort' | 'rarity' | 'category' | 'team'>('sort');
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isAchievementsOpen, setIsAchievementsOpen] = useState(false);
   const [visibleCount, setVisibleCount] = useState(24);
   const [showEasterEgg, setShowEasterEgg] = useState(false);
-  const [easterEggType, setEasterEggType] = useState<'unlock' | 'reset'>('unlock');
+  const [easterEggType, setEasterEggType] = useState<'unlock' | 'reset' | 'catalunya'>('unlock');
   const [viewMode, setViewMode] = useState<'roster' | 'duplicates'>('roster');
+  const [isMobileSearchActive, setIsMobileSearchActive] = useState(false);
+  const loaderRef = useRef<HTMLDivElement>(null);
+
+  // Infinite Scroll using IntersectionObserver
+  useEffect(() => {
+    const observer = new IntersectionObserver((entries) => {
+      if (entries[0].isIntersecting) {
+        setVisibleCount(prev => prev + 24);
+      }
+    }, { threshold: 0.1 });
+
+    if (loaderRef.current) {
+      observer.observe(loaderRef.current);
+    }
+
+    return () => observer.disconnect();
+  }, []);
 
   // Reset pagination when filters change
   React.useEffect(() => {
@@ -65,11 +86,25 @@ export default function CollectionView() {
       return;
     }
 
+    if (search.toLowerCase() === 'catalunya') {
+      // Catalonia Mode: Reset Game & Turn Off Premium + Wipe Shop Purchases
+      resetGame();
+      setPremium(false);
+      updateGameStateAsync({ hasLifetimeNoAds: false, isPremium: false });
+      
+      // Feedback
+      setSearch('');
+      setEasterEggType('catalunya');
+      setShowEasterEgg(true);
+      setTimeout(() => setShowEasterEgg(false), 3000);
+      return;
+    }
+
     const timer = setTimeout(() => {
       setDebouncedSearch(search);
     }, 300);
     return () => clearTimeout(timer);
-  }, [search, collection, addCoins, setPremium, addToCollection, resetGame]);
+  }, [search, collection, addCoins, setPremium, addToCollection, resetGame, updateGameStateAsync]);
 
   const handleCardClick = useCallback((card: Card) => {
     setSelectedCard(card);
@@ -90,29 +125,66 @@ export default function CollectionView() {
     );
   }, [collection, handleCardClick]);
 
-  const totalCards = ALL_CARDS.length;
+  const isScreamActive = isScreamEditionActive(isPremium);
+  const isScreamFilterAvailable = isScreamFilterPermanentlyAvailable(isPremium);
+
+  const allAvailableCards = useMemo(() => {
+    const map = new Map<string, Card>();
+    ALL_CARDS.forEach(c => {
+      const isScream = c.series === 'Scream Edition' || c.category === 'Scream Edition' || c.id.startsWith('scream-');
+      if (isScream && !isScreamActive) return;
+      map.set(c.id, c);
+    });
+    (customCards || []).forEach(c => {
+      const isScream = c.series === 'Scream Edition' || c.category === 'Scream Edition' || c.id.startsWith('scream-');
+      if (isScream && !isScreamActive) return;
+      map.set(c.id, c);
+    });
+    return Array.from(map.values());
+  }, [customCards, isScreamActive]);
+
+  const totalCards = allAvailableCards.length;
   const collectedCount = useMemo(() => Object.keys(collection).filter(id => collection[id] > 0).length, [collection]);
   const progressPercent = Math.round((collectedCount / totalCards) * 100);
 
   const teams = useMemo(() => {
-    const uniqueTeams = Array.from(new Set(ALL_CARDS.map(c => c.team))).sort();
-    return ['All', ...uniqueTeams];
+    const list = NBA_TEAMS.map(t => t.name).sort();
+    return ['All', ...list];
   }, []);
 
   const series = useMemo(() => {
-    const uniqueSeries = Array.from(new Set(ALL_CARDS.filter(c => c.series).map(c => c.series as string))).sort();
+    const uniqueSeries = Array.from(new Set(allAvailableCards.filter(c => c.series).map(c => c.series as string))).sort();
     return ['All', ...uniqueSeries];
-  }, []);
+  }, [allAvailableCards]);
+
+  const categoryOptions = useMemo(() => {
+    const base = ['All', 'MVP', 'Finals MVP', 'DPOY', 'ROY', '6MOTY', 'MIP', 'SBC Reward', 'Base', 'Award', 'Moment', 'Duo', 'Coach', 'Dynasty', 'X-Factor', 'NBA Record', 'All-Star MVP', 'Scoring Champion', 'Hall of Fame'];
+    if (isScreamFilterAvailable) {
+      base.splice(1, 0, 'Scream Edition');
+    }
+    return base;
+  }, [isScreamFilterAvailable]);
 
   const filteredCards = useMemo(() => {
     const searchLower = debouncedSearch.toLowerCase();
     
-    const filtered = ALL_CARDS.filter(card => {
+    const filtered = allAvailableCards.filter(card => {
       // Duplicates mode filter
       if (viewMode === 'duplicates' && (collection[card.id] || 0) <= 1) return false;
 
       const matchesRarity = activeFilter === 'All' || card.rarity === activeFilter;
-      const matchesCategory = categoryFilter === 'All' || card.category === categoryFilter;
+      
+      let matchesCategory = categoryFilter === 'All';
+      if (!matchesCategory) {
+        if (categoryFilter === 'SBC Reward') {
+          matchesCategory = !!(card.isSpecialSBC || card.category === 'SBC Reward' || card.subtitle?.toLowerCase().includes('sbc') || card.rarity.includes('_sbc'));
+        } else if (categoryFilter === 'Scream Edition') {
+          matchesCategory = card.category === 'Scream Edition' || card.series === 'Scream Edition' || card.id.startsWith('scream-');
+        } else {
+          matchesCategory = card.category === categoryFilter;
+        }
+      }
+
       const matchesTeam = teamFilter === 'All' || card.team === teamFilter;
       const matchesSeries = seriesFilter === 'All' || card.series === seriesFilter;
       const matchesSearch = !debouncedSearch || 
@@ -135,14 +207,14 @@ export default function CollectionView() {
           break;
         case 'Number':
         default:
-          comparison = a.number - b.number;
+          comparison = (a.number || 0) - (b.number || 0);
           break;
       }
       return sortOrder === 'asc' ? comparison : -comparison;
     });
-  }, [activeFilter, categoryFilter, teamFilter, seriesFilter, debouncedSearch, sortBy, sortOrder, viewMode, collection]);
+  }, [allAvailableCards, activeFilter, categoryFilter, teamFilter, seriesFilter, debouncedSearch, sortBy, sortOrder, viewMode, collection]);
 
-  const filters: FilterType[] = ['All', 'bench', 'starter', 'allstar', 'franchise', 'legend', 'roty', 'coach', 'dpoy', 'record', 'rookie', 'rising_star'];
+  const filters: FilterType[] = ['All', 'mvp' as any, 'fmvp' as any, 'dpoy' as any, 'roty' as any, '6moy' as any, 'mip' as any, 'future_star' as any, 'legend_sbc' as any, 'icon_sbc' as any, 'moments_sbc' as any, 'bench', 'starter', 'allstar', 'franchise', 'legend', 'coach', 'record'];
 
   const hasActiveFilters = activeFilter !== 'All' || categoryFilter !== 'All' || teamFilter !== 'All' || seriesFilter !== 'All' || search !== '';
 
@@ -154,374 +226,397 @@ export default function CollectionView() {
     setSearch('');
   };
 
-  const handleScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
-    const target = e.currentTarget;
-    if (target.scrollHeight - target.scrollTop - target.clientHeight < 200) {
-      if (visibleCount < filteredCards.length) {
-        setVisibleCount(prev => prev + 24);
-      }
-    }
-  }, [visibleCount, filteredCards.length]);
-
   const isDynastyHunter = unlockedAchievements.includes('dynasty-hunter');
   const isVintageCollector = unlockedAchievements.includes('vintage-collector');
 
   return (
-    <div className={`flex flex-col h-full bg-black text-white overflow-hidden transition-all duration-1000 ${isDynastyHunter ? 'animate-golden-aura' : ''}`}>
+    <div className={`flex flex-col min-h-full bg-black text-white transition-all duration-1000 ${isDynastyHunter ? 'animate-golden-aura' : ''}`}>
       {/* Header */}
-      <header className={`collection-header sticky top-0 z-30 backdrop-blur-xl px-4 pt-3 pb-2 border-b border-zinc-800/50 transition-colors duration-1000 ${isDynastyHunter ? 'bg-amber-950/20' : 'bg-black/60'}`}>
-        <div className="flex justify-between items-end mb-3">
-          <div className="flex items-center gap-3">
-            <div>
-              <div className="flex items-center gap-1.5 mb-0.5">
-                <div className={`w-1 h-2 rounded-full transition-colors ${isDynastyHunter ? 'bg-amber-400 shadow-[0_0_10px_rgba(245,158,11,0.8)]' : 'bg-amber-500'}`} />
-                <span className="text-[8px] font-black uppercase tracking-[0.2em] text-zinc-500">Player Registry</span>
-              </div>
-              <h1 className="text-lg font-black uppercase tracking-tighter italic leading-none flex items-center gap-2">
-                {viewMode === 'roster' ? 'My Roster' : 'Duplicates'}
-                {isVintageCollector && (
-                  <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-zinc-800 border border-zinc-700 text-[7px] font-black uppercase tracking-widest text-amber-500 italic">
-                    History
-                  </span>
-                )}
-              </h1>
-            </div>
-            
-            {/* View Toggle */}
-            <div className="flex bg-zinc-900/80 rounded-full p-1 border border-zinc-800 self-center">
+      <header className={`sticky top-0 z-30 backdrop-blur-md px-3 border-b border-white/10 transition-colors duration-500 ${isDynastyHunter ? 'bg-amber-950/30' : 'bg-black/90'} shrink-0 flex flex-col w-full`}>
+        
+        {/* Main Control Bar */}
+        <div className="flex items-center justify-between gap-2 h-11 w-full">
+          {/* Left Side: Micro Roster / Duplicates Toggle & Collection Counter */}
+          <div className="flex items-center gap-1.5 shrink-0">
+            {/* Micro Roster / Duplicates Toggle (Text illumination only - no background or border contour) */}
+            <div className="h-6 px-2 bg-zinc-950 border border-white/10 rounded-full flex items-center gap-2 shrink-0">
               <button
                 onClick={() => setViewMode('roster')}
-                className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest transition-all ${
-                  viewMode === 'roster' ? 'bg-amber-500 text-black shadow-lg' : 'text-zinc-500 hover:text-white'
+                className={`text-[8px] uppercase tracking-wider transition-all ${
+                  viewMode === 'roster' 
+                    ? 'text-amber-400 font-black drop-shadow-[0_0_6px_rgba(251,191,36,0.6)]' 
+                    : 'text-zinc-500 hover:text-zinc-300 font-bold'
                 }`}
               >
-                Roster
+                ROSTER
               </button>
+              <span className="text-zinc-800 text-[8px] font-bold">|</span>
               <button
                 onClick={() => setViewMode('duplicates')}
-                className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest transition-all ${
-                  viewMode === 'duplicates' ? 'bg-amber-500 text-black shadow-lg' : 'text-zinc-500 hover:text-white'
+                className={`text-[8px] uppercase tracking-wider transition-all ${
+                  viewMode === 'duplicates' 
+                    ? 'text-amber-400 font-black drop-shadow-[0_0_6px_rgba(251,191,36,0.6)]' 
+                    : 'text-zinc-500 hover:text-zinc-300 font-bold'
                 }`}
               >
-                Duplicates
+                DUPLICATES
               </button>
             </div>
+
+            {/* Collection Counter (x/762) */}
+            <div className="h-6 flex items-center gap-1 px-2 py-0.5 bg-zinc-900 border border-white/10 rounded-full text-[8.5px] font-bold text-zinc-400 shrink-0">
+              <span className="text-amber-400 font-bold">{collectedCount}</span>
+              <span className="text-zinc-600">/</span>
+              <span>{totalCards}</span>
+            </div>
           </div>
-          <div className="flex flex-col items-end gap-2">
-            <button 
-              onClick={() => setIsAchievementsOpen(true)}
-              className="group flex items-center gap-1.5 px-2 py-1 bg-zinc-900 border border-zinc-800 rounded-lg hover:bg-zinc-800 transition-all relative overflow-hidden"
+
+          {/* Right Side: Search Icon Toggle & Filter Button */}
+          <div className="flex items-center gap-1.5 shrink-0">
+            {/* Search Toggle Icon */}
+            <button
+              onClick={() => setIsSearchOpen(!isSearchOpen)}
+              className={`w-7 h-7 rounded-full border flex items-center justify-center shrink-0 relative transition-all ${
+                isSearchOpen || search 
+                  ? 'bg-amber-400/20 text-amber-400 border-amber-400/60' 
+                  : 'bg-zinc-900 text-zinc-400 border-white/10 hover:border-zinc-500 hover:text-white'
+              }`}
+              title="Search Cards"
             >
-              <div className="absolute inset-0 bg-amber-500/5 opacity-0 group-hover:opacity-100 transition-opacity" />
-              <div className="relative flex items-center gap-1.5">
-                <div className="flex items-center justify-center w-4 h-4 rounded-full bg-amber-500/10 text-amber-500">
-                  <Trophy size={8} />
-                </div>
-                <div className="flex flex-col items-start leading-none">
-                  <span className="text-[7px] font-black uppercase tracking-widest text-zinc-500">HOF</span>
-                  <span className="text-[9px] font-black italic text-white">{progressPercent}%</span>
-                </div>
-              </div>
+              <Search size={11} />
+              {search && !isSearchOpen && <span className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 bg-amber-400 rounded-full" />}
             </button>
 
-            <div className="flex flex-col items-end gap-0.5">
-              <div className="flex items-baseline gap-1">
-                <span className={`text-base font-black italic transition-colors ${isDynastyHunter ? 'text-amber-400' : 'text-white'}`}>{collectedCount}</span>
-                <span className="text-[8px] font-bold text-zinc-500 uppercase tracking-widest">/ {totalCards}</span>
-              </div>
-              <div className="w-16 h-1 bg-zinc-900 rounded-full overflow-hidden">
-                <motion.div 
-                  initial={{ width: 0 }}
-                  animate={{ width: `${progressPercent}%` }}
-                  className={`h-full shadow-[0_0_8px_rgba(245,158,11,0.4)] transition-all duration-1000 ${isDynastyHunter ? 'bg-gradient-to-r from-amber-600 via-white to-amber-600' : 'bg-gradient-to-r from-amber-500 to-white'}`} 
-                />
-              </div>
-            </div>
+            {/* Filter Button */}
+            <button
+              onClick={() => setIsFilterOpen(!isFilterOpen)}
+              className={`w-7 h-7 rounded-full border flex items-center justify-center shrink-0 relative transition-all ${
+                isFilterOpen || activeFilter !== 'All' || categoryFilter !== 'All' || teamFilter !== 'All' || seriesFilter !== 'All'
+                  ? 'bg-amber-400 text-black border-amber-400 font-bold shadow-md shadow-amber-400/20'
+                  : 'bg-zinc-900 text-zinc-400 border-white/10 hover:border-zinc-500 hover:text-white'
+              }`}
+              title="Filter & Sort"
+            >
+              <Filter size={11} strokeWidth={2} />
+              {(activeFilter !== 'All' || categoryFilter !== 'All' || teamFilter !== 'All' || seriesFilter !== 'All') && (
+                <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-amber-400 rounded-full border border-black z-10" />
+              )}
+            </button>
           </div>
         </div>
 
-        {/* Compact Search & Filter Bar */}
-        <div className="flex gap-2 items-center relative">
-          <button
-            onClick={() => setIsFilterOpen(!isFilterOpen)}
-            className={`relative p-2.5 rounded-xl border transition-all flex items-center justify-center ${
-              isFilterOpen || activeFilter !== 'All' || teamFilter !== 'All' || seriesFilter !== 'All'
-                ? 'bg-white text-black border-white shadow-[0_0_15px_rgba(255,255,255,0.2)]'
-                : 'bg-zinc-900/80 text-zinc-400 border-zinc-800 hover:border-zinc-700'
-            }`}
-          >
-            <Filter size={18} strokeWidth={2.5} />
-            {(activeFilter !== 'All' || teamFilter !== 'All' || seriesFilter !== 'All') && (
-              <span className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-amber-500 rounded-full border-2 border-black flex items-center justify-center shadow-lg">
-                <span className="text-[10px] font-black text-white leading-none">
-                  {(activeFilter !== 'All' ? 1 : 0) + (teamFilter !== 'All' ? 1 : 0) + (seriesFilter !== 'All' ? 1 : 0)}
-                </span>
-              </span>
-            )}
-          </button>
-
-          <div className="relative flex-1 group">
-            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-500 group-focus-within:text-white transition-colors" size={16} />
-            <input
-              type="text"
-              placeholder="Search roster..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="w-full bg-zinc-900/80 border border-zinc-800 rounded-xl py-2.5 pl-10 pr-10 text-sm focus:ring-1 focus:ring-white/20 focus:bg-zinc-900 transition-all outline-none placeholder:text-zinc-600"
-            />
-            {search && (
-              <button 
-                onClick={() => setSearch('')}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-white p-1"
-              >
-                <X size={14} />
-              </button>
-            )}
-          </div>
-
-          {/* Active Filters Bar */}
-          {hasActiveFilters && (
+        {/* Sub-Row: Expandable Search Bar (Unfolds directly underneath the roster/duplicates bar) */}
+        <AnimatePresence>
+          {isSearchOpen && (
             <motion.div 
               initial={{ height: 0, opacity: 0 }}
               animate={{ height: 'auto', opacity: 1 }}
-              className="flex flex-wrap gap-2 mt-3 overflow-hidden"
+              exit={{ height: 0, opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              className="overflow-hidden pb-2"
             >
-              {activeFilter !== 'All' && (
-                <div className="flex items-center gap-1.5 px-2 py-1 bg-zinc-800 rounded-lg border border-zinc-700">
-                  <span className="text-[9px] font-bold uppercase text-zinc-400">Rarity: {activeFilter}</span>
-                  <button onClick={() => setActiveFilter('All')} className="text-zinc-500 hover:text-white"><X size={10} /></button>
-                </div>
-              )}
-              {categoryFilter !== 'All' && (
-                <div className="flex items-center gap-1.5 px-2 py-1 bg-zinc-800 rounded-lg border border-zinc-700">
-                  <span className="text-[9px] font-bold uppercase text-zinc-400">Category: {categoryFilter}</span>
-                  <button onClick={() => setCategoryFilter('All')} className="text-zinc-500 hover:text-white"><X size={10} /></button>
-                </div>
-              )}
-              {teamFilter !== 'All' && (
-                <div className="flex items-center gap-1.5 px-2 py-1 bg-zinc-800 rounded-lg border border-zinc-700">
-                  <span className="text-[9px] font-bold uppercase text-zinc-400">{teamFilter}</span>
-                  <button onClick={() => setTeamFilter('All')} className="text-zinc-500 hover:text-white"><X size={10} /></button>
-                </div>
-              )}
-              {seriesFilter !== 'All' && (
-                <div className="flex items-center gap-1.5 px-2 py-1 bg-zinc-800 rounded-lg border border-zinc-700">
-                  <span className="text-[9px] font-bold uppercase text-zinc-400">{seriesFilter}</span>
-                  <button onClick={() => setSeriesFilter('All')} className="text-zinc-500 hover:text-white"><X size={10} /></button>
-                </div>
-              )}
-              {search !== '' && (
-                <div className="flex items-center gap-1.5 px-2 py-1 bg-zinc-800 rounded-lg border border-zinc-700">
-                  <span className="text-[9px] font-bold uppercase text-zinc-400">Search: {search}</span>
-                  <button onClick={() => setSearch('')} className="text-zinc-500 hover:text-white"><X size={10} /></button>
-                </div>
-              )}
-              <button 
-                onClick={clearFilters}
-                className="text-[9px] font-black uppercase tracking-widest text-amber-500 hover:text-amber-400 ml-auto self-center"
-              >
-                Clear All
-              </button>
+              <div className="relative flex items-center w-full h-8 bg-zinc-900 border border-amber-500/40 rounded-full px-3 shadow-lg shadow-amber-500/5">
+                <Search size={12} className="text-amber-400 shrink-0 mr-2" />
+                <input
+                  type="text"
+                  autoFocus
+                  placeholder="SEARCH CARDS BY NAME, TEAM, OVR..."
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  className="w-full bg-transparent text-[8.5px] sm:text-[9px] font-bold uppercase tracking-wider text-white placeholder:text-zinc-500 focus:outline-none"
+                />
+                {search && (
+                  <button
+                    onClick={() => setSearch('')}
+                    className="p-1 text-zinc-400 hover:text-white shrink-0 mr-1"
+                  >
+                    <X size={10} />
+                  </button>
+                )}
+                <button
+                  onClick={() => setIsSearchOpen(false)}
+                  className="p-1 text-zinc-500 hover:text-zinc-300 text-[8px] font-bold uppercase tracking-wider border-l border-zinc-800 pl-2 ml-1 shrink-0"
+                >
+                  CLOSE
+                </button>
+              </div>
             </motion.div>
           )}
+        </AnimatePresence>
+      </header>
 
-          {/* Filter Dropdown */}
-          <AnimatePresence>
-            {isFilterOpen && (
-              <>
-                <motion.div
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
-                  className="fixed inset-0 z-40 bg-black/40 backdrop-blur-[2px]"
-                  onClick={() => setIsFilterOpen(false)}
-                />
-                <motion.div
-                  initial={{ opacity: 0, y: -10, scale: 0.98 }}
-                  animate={{ opacity: 1, y: 0, scale: 1 }}
-                  exit={{ opacity: 0, y: -10, scale: 0.98 }}
-                  className="absolute top-full left-0 right-0 mt-2 z-50 bg-zinc-900 border border-zinc-800 rounded-2xl shadow-2xl overflow-hidden max-h-[60vh] flex flex-col"
-                >
-                    <div className="p-4 border-b border-zinc-800/50 flex justify-between items-center bg-zinc-900/50">
-                      <span className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-400">Filter & Sort</span>
-                      <button onClick={() => setIsFilterOpen(false)} className="p-1 text-zinc-500 hover:text-white transition-colors">
-                        <X size={16} />
-                      </button>
-                    </div>
+      {/* Optimized Filter & Sort Modal */}
+      <AnimatePresence>
+        {isFilterOpen && (
+            <>
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="fixed inset-0 z-40 bg-black/70 backdrop-blur-sm"
+                onClick={() => setIsFilterOpen(false)}
+              />
+              <motion.div
+                initial={{ opacity: 0, y: -10, scale: 0.98 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: -10, scale: 0.98 }}
+                className="fixed inset-x-3 top-14 sm:inset-auto sm:top-14 sm:right-4 sm:w-96 max-h-[82vh] z-50 bg-zinc-950 border border-zinc-800 rounded-2xl shadow-2xl flex flex-col overflow-hidden"
+              >
+                {/* Modal Header */}
+                <div className="p-3 border-b border-zinc-800/80 flex justify-between items-center bg-zinc-900/80 shrink-0">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-black uppercase tracking-[0.15em] text-white">Filter & Sort</span>
+                    <span className="text-[8px] font-bold uppercase tracking-wider bg-amber-500/20 text-amber-400 px-2 py-0.5 rounded-full border border-amber-500/30">
+                      {filteredCards.length} CARDS
+                    </span>
+                  </div>
+                  <button onClick={() => setIsFilterOpen(false)} className="p-1 text-zinc-400 hover:text-white transition-colors">
+                    <X size={14} />
+                  </button>
+                </div>
 
-                    <div className="overflow-y-auto p-4 space-y-6 custom-scrollbar bg-zinc-900">
-                      {/* Category Section */}
+                {/* Filter Navigation Tabs */}
+                <div className="flex border-b border-zinc-800/80 bg-zinc-950 shrink-0 px-2 pt-2 gap-1 overflow-x-auto no-scrollbar">
+                  <button
+                    onClick={() => setFilterTab('sort')}
+                    className={`px-3 py-1.5 text-[8.5px] font-black uppercase tracking-wider rounded-t-lg transition-all border-t border-x ${
+                      filterTab === 'sort' 
+                        ? 'bg-zinc-900 text-amber-400 border-zinc-800 font-bold' 
+                        : 'text-zinc-500 border-transparent hover:text-zinc-300'
+                    }`}
+                  >
+                    SORT
+                  </button>
+                  <button
+                    onClick={() => setFilterTab('rarity')}
+                    className={`px-3 py-1.5 text-[8.5px] font-black uppercase tracking-wider rounded-t-lg transition-all border-t border-x ${
+                      filterTab === 'rarity' 
+                        ? 'bg-zinc-900 text-amber-400 border-zinc-800 font-bold' 
+                        : 'text-zinc-500 border-transparent hover:text-zinc-300'
+                    }`}
+                  >
+                    RARITY {activeFilter !== 'All' && '●'}
+                  </button>
+                  <button
+                    onClick={() => setFilterTab('category')}
+                    className={`px-3 py-1.5 text-[8.5px] font-black uppercase tracking-wider rounded-t-lg transition-all border-t border-x ${
+                      filterTab === 'category' 
+                        ? 'bg-zinc-900 text-amber-400 border-zinc-800 font-bold' 
+                        : 'text-zinc-500 border-transparent hover:text-zinc-300'
+                    }`}
+                  >
+                    CATEGORY {categoryFilter !== 'All' && '●'}
+                  </button>
+                  <button
+                    onClick={() => setFilterTab('team')}
+                    className={`px-3 py-1.5 text-[8.5px] font-black uppercase tracking-wider rounded-t-lg transition-all border-t border-x ${
+                      filterTab === 'team' 
+                        ? 'bg-zinc-900 text-amber-400 border-zinc-800 font-bold' 
+                        : 'text-zinc-500 border-transparent hover:text-zinc-300'
+                    }`}
+                  >
+                    TEAMS {teamFilter !== 'All' && '●'}
+                  </button>
+                </div>
+
+                {/* Tab Content Area */}
+                <div className="overflow-y-auto p-3.5 space-y-4 custom-scrollbar bg-zinc-900 flex-1 min-h-[220px]">
+                  {/* SORT TAB */}
+                  {filterTab === 'sort' && (
+                    <div className="space-y-4">
                       <div>
-                        <h3 className="text-[9px] font-black uppercase tracking-widest text-zinc-500 mb-3 flex items-center gap-2">
-                          <div className="w-1 h-1 bg-amber-500 rounded-full" />
-                          Category
-                        </h3>
-                        <div className="flex flex-wrap gap-2">
-                          {['All', 'Base', 'Award', 'Moment', 'Duo', 'Coach', 'Dynasty', 'X-Factor', 'NBA Record', 'Rookie', 'All-Star MVP', 'Finals MVP'].map((c) => (
-                            <button
-                              key={c}
-                              onClick={() => {
-                                setCategoryFilter(c);
-                                setIsFilterOpen(false);
-                              }}
-                              className={`px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all border ${
-                                categoryFilter === c 
-                                  ? 'bg-white text-black border-white shadow-lg' 
-                                  : 'bg-zinc-800/50 text-zinc-400 border-zinc-700 hover:border-zinc-600'
-                              }`}
-                            >
-                              {c === 'Duo' ? 'Dynamic Duo' : c}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-
-                      {/* Sort Section */}
-                      <div>
-                        <h3 className="text-[9px] font-black uppercase tracking-widest text-zinc-500 mb-3 flex items-center gap-2">
-                          <div className="w-1 h-1 bg-amber-500 rounded-full" />
-                          Sort By
-                        </h3>
-                        <div className="flex flex-wrap gap-2">
+                        <h4 className="text-[8px] font-bold uppercase tracking-widest text-zinc-500 mb-2">Order By</h4>
+                        <div className="grid grid-cols-2 gap-1.5">
                           {(['Number', 'OVR', 'Name', 'Team'] as SortType[]).map((s) => (
                             <button
                               key={s}
                               onClick={() => setSortBy(s)}
-                              className={`px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all border ${
+                              className={`py-2 px-2.5 rounded-lg text-[9px] font-bold uppercase tracking-wider transition-all border text-center ${
                                 sortBy === s 
-                                  ? 'bg-white text-black border-white shadow-lg' 
-                                  : 'bg-zinc-800/50 text-zinc-400 border-zinc-700 hover:border-zinc-600'
+                                  ? 'bg-white text-black border-white shadow' 
+                                  : 'bg-zinc-800/60 text-zinc-400 border-zinc-700/50 hover:border-zinc-600'
                               }`}
                             >
                               {s}
                             </button>
                           ))}
-                          <button
-                            onClick={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}
-                            className="px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all border bg-zinc-800/50 text-zinc-400 border-zinc-700 hover:border-zinc-600"
-                          >
-                            {sortOrder === 'asc' ? '↑ Asc' : '↓ Desc'}
-                          </button>
                         </div>
                       </div>
 
-                      {/* Rarity Section */}
+                      <div>
+                        <h4 className="text-[8px] font-bold uppercase tracking-widest text-zinc-500 mb-2">Direction</h4>
+                        <div className="grid grid-cols-2 gap-1.5">
+                          <button
+                            onClick={() => setSortOrder('asc')}
+                            className={`py-2 px-2.5 rounded-lg text-[9px] font-bold uppercase tracking-wider transition-all border text-center ${
+                              sortOrder === 'asc' 
+                                ? 'bg-white text-black border-white shadow' 
+                                : 'bg-zinc-800/60 text-zinc-400 border-zinc-700/50 hover:border-zinc-600'
+                            }`}
+                          >
+                            ↑ Ascending
+                          </button>
+                          <button
+                            onClick={() => setSortOrder('desc')}
+                            className={`py-2 px-2.5 rounded-lg text-[9px] font-bold uppercase tracking-wider transition-all border text-center ${
+                              sortOrder === 'desc' 
+                                ? 'bg-white text-black border-white shadow' 
+                                : 'bg-zinc-800/60 text-zinc-400 border-zinc-700/50 hover:border-zinc-600'
+                            }`}
+                          >
+                            ↓ Descending
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* RARITY TAB */}
+                  {filterTab === 'rarity' && (
                     <div>
-                      <h3 className="text-[9px] font-black uppercase tracking-widest text-zinc-500 mb-3 flex items-center gap-2">
-                        <div className="w-1 h-1 bg-amber-500 rounded-full" />
-                        Rarity
-                      </h3>
-                      <div className="flex flex-wrap gap-2">
+                      <h4 className="text-[8px] font-bold uppercase tracking-widest text-zinc-500 mb-2">Select Card Rarity</h4>
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
                         {filters.map((f) => (
                           <button
                             key={f}
-                            onClick={() => {
-                              setActiveFilter(f);
-                              setIsFilterOpen(false);
-                            }}
-                            className={`px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all border ${
+                            onClick={() => setActiveFilter(f)}
+                            className={`py-2 px-2 rounded-lg text-[8.5px] font-bold uppercase tracking-wider transition-all border text-center truncate ${
                               activeFilter === f 
-                                ? 'bg-white text-black border-white shadow-lg' 
-                                : 'bg-zinc-800/50 text-zinc-400 border-zinc-700 hover:border-zinc-600'
+                                ? 'bg-amber-400 text-black border-amber-400 font-extrabold shadow' 
+                                : 'bg-zinc-800/60 text-zinc-300 border-zinc-700/50 hover:border-zinc-600'
                             }`}
                           >
-                            {f === 'allstar' ? 'All-Star' : f === 'roty' ? 'ROTY' : f === 'dpoy' ? 'DPOY' : f}
+                            {f === 'allstar' ? 'All-Star' : f === 'roty' ? 'ROTY' : f === 'dpoy' ? 'DPOY' : f.toUpperCase()}
                           </button>
                         ))}
                       </div>
                     </div>
+                  )}
 
-                    {/* Team Section */}
+                  {/* CATEGORY TAB */}
+                  {filterTab === 'category' && (
                     <div>
-                      <h3 className="text-[9px] font-black uppercase tracking-widest text-zinc-500 mb-3 flex items-center gap-2">
-                        <div className="w-1 h-1 bg-amber-500 rounded-full" />
-                        Team
-                      </h3>
-                      <div className="grid grid-cols-2 gap-2">
+                      <h4 className="text-[8px] font-bold uppercase tracking-widest text-zinc-500 mb-2">Select Card Category</h4>
+                      <div className="grid grid-cols-2 gap-1.5">
+                        {categoryOptions.map((c) => (
+                          <button
+                            key={c}
+                            onClick={() => setCategoryFilter(c)}
+                            className={`py-2 px-2.5 rounded-lg text-[8.5px] font-bold uppercase tracking-wider transition-all border text-center truncate ${
+                              categoryFilter === c 
+                                ? (c === 'Scream Edition' ? 'bg-gradient-to-r from-orange-500 to-purple-600 text-white border-orange-400 font-extrabold shadow-[0_0_12px_rgba(249,115,22,0.7)]' : 'bg-amber-400 text-black border-amber-400 font-extrabold shadow')
+                                : (c === 'Scream Edition' ? 'bg-orange-950/40 text-orange-300 border-orange-500/40 hover:border-orange-400' : 'bg-zinc-800/60 text-zinc-300 border-zinc-700/50 hover:border-zinc-600')
+                            }`}
+                          >
+                            {c === 'Scream Edition' ? '🎃 Scream Edition' : c === 'Duo' ? 'Dynamic Duo' : c}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* TEAMS TAB */}
+                  {filterTab === 'team' && (
+                    <div>
+                      <h4 className="text-[8px] font-bold uppercase tracking-widest text-zinc-500 mb-2">Select NBA Franchise</h4>
+                      <div className="grid grid-cols-2 gap-1.5 max-h-[220px] overflow-y-auto custom-scrollbar pr-1">
                         {teams.map((t) => (
                           <button
                             key={t}
-                            onClick={() => {
-                              setTeamFilter(t);
-                              setIsFilterOpen(false);
-                            }}
-                            className={`px-3 py-2 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all border text-left truncate ${
+                            onClick={() => setTeamFilter(t)}
+                            className={`py-1.5 px-2 rounded-lg text-[8.5px] font-bold uppercase tracking-wider transition-all border text-left truncate ${
                               teamFilter === t 
-                                ? 'bg-white text-black border-white shadow-lg' 
-                                : 'bg-zinc-800/50 text-zinc-400 border-zinc-700 hover:border-zinc-600'
+                                ? 'bg-amber-400 text-black border-amber-400 font-extrabold shadow' 
+                                : 'bg-zinc-800/60 text-zinc-300 border-zinc-700/50 hover:border-zinc-600'
                             }`}
                           >
-                            {t === 'All' ? 'All Teams' : t}
+                            {t === 'All' ? 'ALL TEAMS' : t}
                           </button>
                         ))}
                       </div>
                     </div>
+                  )}
+                </div>
 
-                    {/* Series Section */}
-                    {series.length > 1 && (
-                      <div>
-                        <h3 className="text-[9px] font-black uppercase tracking-widest text-zinc-500 mb-3 flex items-center gap-2">
-                          <div className="w-1 h-1 bg-amber-500 rounded-full" />
-                          Series
-                        </h3>
-                        <div className="flex flex-wrap gap-2">
-                          {series.map((s) => (
-                            <button
-                              key={s}
-                              onClick={() => {
-                                setSeriesFilter(s);
-                                setIsFilterOpen(false);
-                              }}
-                              className={`px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all border ${
-                                seriesFilter === s 
-                                  ? 'bg-white text-black border-white shadow-lg' 
-                                  : 'bg-zinc-800/50 text-zinc-400 border-zinc-700 hover:border-zinc-600'
-                              }`}
-                            >
-                              {s === 'All' ? 'All Series' : s}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </div>
+                {/* Modal Footer Controls */}
+                <div className="p-3 bg-zinc-950 border-t border-zinc-800/80 flex gap-2 shrink-0">
+                  <button
+                    onClick={() => {
+                      setActiveFilter('All');
+                      setCategoryFilter('All');
+                      setTeamFilter('All');
+                      setSeriesFilter('All');
+                      setSearch('');
+                    }}
+                    className="flex-1 py-2 text-[8.5px] font-black uppercase tracking-widest text-zinc-400 hover:text-white transition-colors border border-zinc-800 hover:border-zinc-700 rounded-xl"
+                  >
+                    RESET ALL
+                  </button>
+                  <button
+                    onClick={() => setIsFilterOpen(false)}
+                    className="flex-2 py-2 px-3 text-[8.5px] font-black uppercase tracking-widest bg-amber-400 text-black rounded-xl font-extrabold shadow-lg shadow-amber-400/20 hover:bg-amber-300 transition-colors"
+                  >
+                    APPLY ({filteredCards.length})
+                  </button>
+                </div>
+              </motion.div>
+            </>
+          )}
+        </AnimatePresence>
 
-                  <div className="p-3 bg-zinc-950 border-t border-zinc-800 flex gap-2">
-                    <button
-                      onClick={() => {
-                        setActiveFilter('All');
-                        setCategoryFilter('All');
-                        setTeamFilter('All');
-                        setSeriesFilter('All');
-                      }}
-                      className="flex-1 py-2.5 text-[10px] font-black uppercase tracking-widest text-zinc-500 hover:text-white transition-colors border border-zinc-800 rounded-lg"
-                    >
-                      Reset
-                    </button>
-                    <button
-                      onClick={() => setIsFilterOpen(false)}
-                      className="flex-1 py-2.5 text-[10px] font-black uppercase tracking-widest bg-white text-black rounded-lg font-bold"
-                    >
-                      Apply
-                    </button>
-                  </div>
-                </motion.div>
-              </>
-            )}
-          </AnimatePresence>
+      {/* Row 2: Active Filters Bar (Horizontal Scrollable, no-wrap, extremely compact, only visible if filtering) */}
+      {hasActiveFilters && (
+        <div className="flex items-center gap-1.5 px-3 py-1 bg-zinc-950/80 border-b border-zinc-900/50 overflow-x-auto no-scrollbar shrink-0 select-none pb-1.5 whitespace-nowrap">
+          {activeFilter !== 'All' && (
+            <div className="flex items-center gap-1 px-2 py-0.5 bg-zinc-900 rounded border border-zinc-800/60 shrink-0">
+              <span className="text-[7px] font-black uppercase text-zinc-400">Rar: {activeFilter}</span>
+              <button onClick={() => setActiveFilter('All')} className="text-zinc-500 hover:text-white shrink-0"><X size={7} /></button>
+            </div>
+          )}
+          {categoryFilter !== 'All' && (
+            <div className="flex items-center gap-1 px-2 py-0.5 bg-zinc-900 rounded border border-zinc-800/60 shrink-0">
+              <span className="text-[7px] font-black uppercase text-zinc-400">Cat: {categoryFilter}</span>
+              <button onClick={() => setCategoryFilter('All')} className="text-zinc-500 hover:text-white shrink-0"><X size={7} /></button>
+            </div>
+          )}
+          {teamFilter !== 'All' && (
+            <div className="flex items-center gap-1 px-2 py-0.5 bg-zinc-900 rounded border border-zinc-800/60 shrink-0">
+              <span className="text-[7px] font-black uppercase text-zinc-400">{teamFilter}</span>
+              <button onClick={() => setTeamFilter('All')} className="text-zinc-550 hover:text-white shrink-0"><X size={7} /></button>
+            </div>
+          )}
+          {seriesFilter !== 'All' && (
+            <div className="flex items-center gap-1 px-2 py-0.5 bg-zinc-900 rounded border border-zinc-800/60 shrink-0">
+              <span className="text-[7px] font-black uppercase text-zinc-400">{seriesFilter}</span>
+              <button onClick={() => setSeriesFilter('All')} className="text-zinc-550 hover:text-white shrink-0"><X size={7} /></button>
+            </div>
+          )}
+          {search !== '' && (
+            <div className="flex items-center gap-1 px-2 py-0.5 bg-zinc-900 rounded border border-zinc-800/60 shrink-0">
+              <span className="text-[7px] font-black uppercase text-zinc-400">Query: {search}</span>
+              <button onClick={() => setSearch('')} className="text-zinc-555 hover:text-white shrink-0"><X size={7} /></button>
+            </div>
+          )}
+          <button 
+            onClick={clearFilters}
+            className="text-[7px] font-black uppercase tracking-widest text-amber-500 hover:text-amber-400 shrink-0 ml-1.5"
+          >
+            Clear
+          </button>
         </div>
-      </header>
+      )}
 
       {/* Grid View */}
-      <div className="flex-1 overflow-y-auto no-scrollbar" onScroll={handleScroll}>
+      <div className="flex-1 px-4">
         <div className="collection-grid">
-          {filteredCards.slice(0, visibleCount).map(renderGridItem)}
+          {(filteredCards || []).slice(0, visibleCount).map(renderGridItem)}
         </div>
         
         {/* Load More Indicator */}
         {visibleCount < filteredCards.length && (
-          <div className="flex justify-center py-8">
-            <div className="w-8 h-8 border-4 border-amber-500/20 border-t-amber-500 rounded-full animate-spin" />
+          <div ref={loaderRef} className="flex flex-col items-center justify-center py-8 gap-2">
+            <div className="w-6 h-6 border-2 border-amber-500/10 border-t-amber-500 rounded-full animate-spin" />
+            <span className="text-[8px] font-black tracking-[0.2em] text-zinc-600 uppercase animate-pulse">LOAD MORE PLAYERS</span>
           </div>
         )}
         
@@ -561,10 +656,10 @@ export default function CollectionView() {
             </div>
             <div className="flex flex-col">
               <span className="text-[10px] font-black uppercase tracking-widest leading-none mb-0.5">
-                {easterEggType === 'unlock' ? 'Developer Mode' : 'System Reset'}
+                {easterEggType === 'unlock' ? 'Developer Mode' : easterEggType === 'catalunya' ? 'Catalonia Mode' : 'System Reset'}
               </span>
               <span className="text-xs font-black italic tracking-tighter uppercase">
-                {easterEggType === 'unlock' ? 'Everything Unlocked!' : 'Game Restored to Base!'}
+                {easterEggType === 'unlock' ? 'Everything Unlocked!' : easterEggType === 'catalunya' ? 'GAME RESET & SHOP PURCHASES WIPED!' : 'Game Restored to Base!'}
               </span>
             </div>
           </motion.div>

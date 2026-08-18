@@ -36,32 +36,32 @@ const ProfileView: React.FC = () => {
 
     // Update inventory
     const updatedInventory = [...inventoryPacks];
-    const mvpPackIndex = updatedInventory.findIndex(p => p.id === 'mvp-pack');
+    const randomPackIndex = updatedInventory.findIndex(p => p.id === 'random-pack');
     
-    if (mvpPackIndex !== -1) {
-      updatedInventory[mvpPackIndex] = {
-        ...updatedInventory[mvpPackIndex],
-        count: updatedInventory[mvpPackIndex].count + 1
+    if (randomPackIndex !== -1) {
+      updatedInventory[randomPackIndex] = {
+        ...updatedInventory[randomPackIndex],
+        count: updatedInventory[randomPackIndex].count + 1
       };
     } else {
       updatedInventory.push({
-        id: 'mvp-pack',
-        type: 'mvp',
-        name: 'MVP Pack',
+        id: 'random-pack',
+        type: 'random',
+        name: 'Random Pack',
         count: 1
       });
     }
 
     // Update state
     updateGameState({
-      coins: coins + 100000,
+      coins: coins + 5000,
       inventoryPacks: updatedInventory,
       unlockedAchievements: [...unlockedAchievements, 'reward_twitter_claimed']
     });
 
     // Show success message
-    notifySuccess('Reward Claimed! 100,000 Coins & 1 MVP Pack added.');
-    setMessage({ type: 'success', text: 'Reward Claimed! 100,000 Coins & 1 MVP Pack added.' });
+    notifySuccess('Reward Claimed! 5,000 Coins & 1 Random Pack added.');
+    setMessage({ type: 'success', text: 'Reward Claimed! 5,000 Coins & 1 Random Pack added.' });
     
     // Force sync
     setTimeout(() => {
@@ -133,7 +133,7 @@ const ProfileView: React.FC = () => {
   };
 
   return (
-    <div className="h-full w-full overflow-y-auto px-4 py-6 scrollbar-hide">
+    <div className="min-h-full w-full px-4 py-6 scrollbar-hide">
       <div className="max-w-md mx-auto space-y-8 pb-20">
         {/* Profile Header */}
         <div className="text-center space-y-4">

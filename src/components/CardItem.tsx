@@ -6,12 +6,19 @@ import { Lock, Zap } from 'lucide-react';
 interface CardItemProps {
   card: Card;
   isOwned: boolean;
-  mode?: 'mini' | 'large';
+  mode?: 'mini' | 'large' | 'condensed';
   onClick?: (card: Card) => void;
   showBack?: boolean;
   isFocused?: boolean;
   isNew?: boolean;
   quantity?: number;
+  dynamicOvr?: number;
+  dynamicStats?: {
+    points: number;
+    rebounds: number;
+    assists: number;
+  };
+  width?: number;
 }
 
 const getRarityClass = (rarity: Rarity) => {
@@ -25,15 +32,23 @@ const getRarityClass = (rarity: Rarity) => {
     case 'dpoy': return 'card-dpoy';
     case 'roty': return 'card-roty';
     case 'record': return 'card-record';
-    case 'rookie': return 'card-rookie';
     case 'logo': return 'card-logo';
     case 'arena': return 'card-arena';
     case 'draft2026': return 'card-draft2026';
     case 'scoring_champ': return 'card-scoring-champ';
     case 'hof': return 'card-hof';
     case 'coy': return 'card-coy';
-    case 'rising_star': return 'card-rising-star';
     case 'allnba_1st': return 'card-allnba-1st';
+    case 'invincible': return 'card-invincible';
+    case 'galaxy': return 'card-galaxy';
+    case 'legend_sbc': return 'card-legend_sbc';
+    case 'icon_sbc': return 'card-icon_sbc';
+    case 'moments_sbc': return 'card-moments_sbc';
+    case 'future_star': return 'card-future_star';
+    case '6moy': return 'card-6moy';
+    case 'mip': return 'card-award';
+    case 'mvp': return 'card-fmvp';
+    case 'fmvp': return 'card-fmvp';
     default: return '';
   }
 };
@@ -48,66 +63,87 @@ const RARITY_COLORS: Record<Rarity, string> = {
   'dpoy': '#064E3B', // Deep emerald
   'roty': '#EA580C', // Bright orange
   'record': '#F59E0B', // Gold/Amber
-  'rookie': '#3B82F6', // Blue
   'logo': '#F59E0B',   // Gold
   'arena': '#10B981',  // Emerald
   'draft2026': '#6366F1', // Indigo
   'scoring_champ': '#FF4D4D', // Fire Crimson
   'hof': '#F1F5F9', // Platinum/Silver
   'coy': '#FDE047', // Gold
-  'rising_star': '#06B6D4', // Cyan
   'allnba_1st': '#F59E0B',   // Gold/Amber
+  'invincible': '#FFD700',
+  'galaxy': '#E94560',
+  'legend_sbc': '#F59E0B',
+  'icon_sbc': '#8B5CF6',
+  'moments_sbc': '#FFFFFF',
+  'future_star': '#10B981',
+  '6moy': '#10B981',
+  'mip': '#EC4899',
+  'mvp': '#F59E0B',
+  'fmvp': '#F59E0B',
 };
 
-const CardItem: React.FC<CardItemProps> = memo(({ card, isOwned, mode = 'mini', onClick, showBack = false, isFocused = false, isNew = false, quantity = 0 }) => {
+const CardItem: React.FC<CardItemProps> = memo(({ card, isOwned, mode = 'mini', onClick, showBack = false, isFocused = false, isNew = false, quantity = 0, dynamicOvr, dynamicStats, width }) => {
   const [isHovered, setIsHovered] = useState(false);
+  const [imageLoaded, setImageLoaded] = useState(false);
+  const [imageError, setImageError] = useState(false);
   const isMini = mode === 'mini';
   
-  const { rarityClass, categoryClass, isDarkCard, isHolo, isFranchise, isLegend, isDPOY, isROTY, isXFactor, isVintage, isMoment, RarityColor } = useMemo(() => {
-    const rClass = getRarityClass(card.rarity);
-    const rColor = RARITY_COLORS[card.rarity] || '#94A3B8';
+  const displayOvr = dynamicOvr !== undefined ? dynamicOvr : (card?.stats.ovr || 0);
+  const displayStats = dynamicStats || card?.stats;
+  
+  if (!card && !showBack) return null;
+
+  const { rarityClass, categoryClass, isDarkCard, isHolo, isFranchise, isLegend, isDPOY, isROTY, isXFactor, isVintage, isMoment, isScream, RarityColor } = useMemo(() => {
+    if (!card) {
+       return { rarityClass: '', categoryClass: '', isDarkCard: true, isHolo: false, isFranchise: false, isLegend: false, isDPOY: false, isROTY: false, isXFactor: false, isVintage: false, isMoment: false, isScream: false, RarityColor: '#94A3B8' };
+    }
+    const isScreamCard = card.category === 'Scream Edition' || card.series === 'Scream Edition' || card.id.startsWith('scream-');
+    const rClass = isScreamCard ? 'card-scream' : getRarityClass(card.rarity);
+    const rColor = isScreamCard ? '#f97316' : (RARITY_COLORS[card.rarity] || '#94A3B8');
     
     const isMoment = card.category === 'Moment';
     const isDynasty = card.category === 'Dynasty';
+    const isDuo = card.category === 'Duo';
     const isXFactor = card.category === 'X-Factor';
-    const isRookie = card.category === 'Rookie';
-    const isAward = card.category === 'Award';
+    const isAward = card.category === 'Award' || ['MVP', 'Finals MVP', 'DPOY', 'ROY', '6MOTY', 'MIP', 'All-Star MVP'].includes(card.category);
     const isDraft2026 = card.category === 'Draft 2026';
     const isScoringChamp = card.category === 'Scoring Champion';
     const isHOF = card.category === 'Hall of Fame';
     const isCOY = card.category === 'Coach of the Year';
-    const isRisingStar = card.category === 'Rising Star';
     const isAllNBA = card.category === 'All-NBA 1st Team';
     
-    const cClass = isAward 
-      ? (card.rarity === 'dpoy' ? 'card-dpoy' : 
-         card.series === 'ROTY Series' ? 'card-roty' : 
-         card.series === '6MOY Series' ? 'card-6moy' : 
-         card.series === 'NBA Record Series' ? 'card-record' : 'card-award') 
-      : isDynasty ? 'card-dynasty' : 
-        isXFactor ? 'card-xfactor' : 
-        isRookie ? 'card-rookie' : 
-        isDraft2026 ? 'card-draft2026' :
-        isScoringChamp ? 'card-scoring-champ' :
-        isHOF ? 'card-hof' :
-        isCOY ? 'card-coy' :
-        isRisingStar ? 'card-rising-star' :
-        isAllNBA ? 'card-allnba-1st' :
-        card.category === 'All-Star MVP' ? 'card-as-mvp' : 
-        card.category === 'Finals MVP' ? 'card-fmvp' : 
-        isMoment ? 'card-moment' : '';
+    const cClass = 
+      isScreamCard ? 'card-scream' :
+      card.category === 'All-Star MVP' ? 'card-as-mvp' :
+      isAward 
+        ? (card.category === 'DPOY' || card.rarity === 'dpoy' ? 'card-dpoy' : 
+           card.category === 'ROY' || card.rarity === 'roty' || card.series === 'ROTY Series' ? 'card-roty' : 
+           card.category === '6MOTY' || card.rarity === '6moy' || card.series === '6MOY Series' ? 'card-6moy' : 
+           card.category === 'Finals MVP' || card.rarity === 'fmvp' ? 'card-fmvp' :
+           card.category === 'MVP' || card.rarity === 'mvp' ? 'card-fmvp' :
+           card.category === 'MIP' || card.rarity === 'mip' ? 'card-mip' :
+           card.series === 'NBA Record Series' ? 'card-record' : 'card-award') 
+        : isDynasty ? 'card-dynasty' : 
+          isDuo ? 'card-duo' :
+          isXFactor ? 'card-xfactor' : 
+          isDraft2026 ? 'card-draft2026' :
+          isScoringChamp ? 'card-scoring-champ' :
+          isHOF ? 'card-hof' :
+          isCOY ? 'card-coy' :
+          isAllNBA ? 'card-allnba-1st' :
+          isMoment ? 'card-moment' : '';
         
-    const dark = isAward || card.category === 'Coach' || card.rarity === 'dpoy' || card.rarity === 'roty' || card.rarity === 'record' || card.rarity === 'logo' || card.rarity === 'arena' || card.rarity === 'draft2026' || card.rarity === 'scoring_champ' || card.rarity === 'hof' || card.rarity === 'coy' || card.rarity === 'rising_star' || card.rarity === 'allnba_1st' || isDynasty || isXFactor || card.category === 'NBA Record' || isRookie || isDraft2026 || isScoringChamp || isHOF || isCOY || isRisingStar || isAllNBA || card.category === 'All-Star MVP' || card.category === 'Finals MVP' || isMoment;
-    const holo = ['allstar', 'franchise', 'legend', 'dpoy', 'roty', 'record', 'rookie', 'logo', 'arena', 'draft2026', 'scoring_champ', 'hof', 'coy', 'rising_star', 'allnba_1st'].includes(card.rarity) || isDynasty || isXFactor || isMoment;
+    const dark = isScreamCard || isAward || card.category === 'Coach' || ['dpoy', 'roty', '6moy', 'mip', 'mvp', 'fmvp', 'record', 'logo', 'arena', 'draft2026', 'scoring_champ', 'hof', 'coy', 'allnba_1st'].includes(card.rarity) || isDynasty || isDuo || isXFactor || card.category === 'NBA Record' || isDraft2026 || isScoringChamp || isHOF || isCOY || isAllNBA || isMoment || card.rarity === 'franchise' || ['invincible', 'galaxy', 'legend_sbc', 'icon_sbc', 'moments_sbc', 'future_star'].includes(card.rarity);
+    const holo = isScreamCard || isAward || ['allstar', 'franchise', 'legend', 'dpoy', 'roty', '6moy', 'mip', 'mvp', 'fmvp', 'record', 'logo', 'arena', 'draft2026', 'scoring_champ', 'hof', 'coy', 'allnba_1st', 'invincible', 'galaxy', 'legend_sbc', 'icon_sbc', 'moments_sbc', 'future_star'].includes(card.rarity) || isDynasty || isDuo || isXFactor || isMoment;
     const franchise = card.rarity === 'franchise';
-    const legend = card.rarity === 'legend' || isDynasty || isMoment;
+    const legend = isScreamCard || card.rarity === 'legend' || isDynasty || isMoment;
     const dpoy = card.rarity === 'dpoy';
     const roty = card.rarity === 'roty';
     const xfactor = isXFactor;
     const vintage = card.nbaId < 1000;
     
-    return { rarityClass: rClass, categoryClass: cClass, isDarkCard: dark, isHolo: holo, isFranchise: franchise, isLegend: legend, isDPOY: dpoy, isROTY: roty, isXFactor: xfactor, isVintage: vintage, isMoment, RarityColor: rColor };
-  }, [card.rarity, card.category, card.series, card.nbaId]);
+    return { rarityClass: rClass, categoryClass: cClass, isDarkCard: dark, isHolo: holo, isFranchise: franchise, isLegend: legend, isDPOY: dpoy, isROTY: roty, isXFactor: xfactor, isVintage: vintage, isMoment, isScream: isScreamCard, RarityColor: rColor };
+  }, [card.rarity, card.category, card.series, card.nbaId, card.id]);
 
   const handleMouseMove = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
     if (!isHovered) setIsHovered(true);
@@ -249,7 +285,7 @@ const CardItem: React.FC<CardItemProps> = memo(({ card, isOwned, mode = 'mini', 
   };
 
   const renderQuantityBadge = () => {
-    if (!quantity || quantity <= 1) return null;
+    if (!quantity || quantity <= 0) return null;
     return (
       <div className={isMini 
         ? "absolute bottom-12 right-2 z-[60] bg-blue-600 text-white text-[10px] font-black px-1.5 py-0.5 rounded-full shadow-lg border border-white/20 scale-90"
@@ -262,18 +298,74 @@ const CardItem: React.FC<CardItemProps> = memo(({ card, isOwned, mode = 'mini', 
 
   const renderHeader = () => {
     if (isMini) {
+      if (isScream) {
+        return (
+          <div className="absolute top-0 left-0 right-0 p-1.5 z-50 flex justify-between items-start bg-gradient-to-b from-black/80 via-black/40 to-transparent">
+            <div className="flex flex-col min-w-0">
+              <div className="flex items-center gap-1">
+                <h3 className="text-[9px] font-black uppercase italic leading-none drop-shadow-md truncate text-white">
+                  {card.name}
+                </h3>
+                <span className="bg-gradient-to-r from-orange-500 to-purple-600 text-white text-[6px] font-black px-1 py-0.2 rounded shadow-md border border-orange-300/60 leading-tight">
+                  🎃 SCREAM
+                </span>
+              </div>
+              <span className="text-[6px] font-bold uppercase tracking-tighter truncate text-orange-300/90 shadow-black">
+                {card.team} • HALLOWEEN
+              </span>
+            </div>
+            <div className="bg-black/90 backdrop-blur-sm rounded px-1 py-0.5 border border-orange-500/80 shadow-[0_0_8px_rgba(249,115,22,0.6)]">
+              <span className="text-[9px] font-black text-orange-400 italic leading-none">{displayOvr}</span>
+            </div>
+          </div>
+        );
+      }
+
       return (
         <div className="absolute top-0 left-0 right-0 p-1.5 z-50 flex justify-between items-start bg-gradient-to-b from-black/60 to-transparent">
           <div className="flex flex-col min-w-0">
-            <h3 className={`text-[9px] font-black uppercase italic leading-none drop-shadow-md truncate ${isMoment ? 'moment-title-text mini-moment-title-text' : 'text-white'}`}>
-              {isMoment && card.momentTitle ? card.momentTitle : card.name}
-            </h3>
-            <span className="text-[6px] font-bold text-white/70 uppercase tracking-tighter truncate">
-              {isMoment ? card.name : card.subtitle}
+            <div className="flex items-center gap-1">
+              <h3 className={`text-[9px] font-black uppercase italic leading-none drop-shadow-md truncate ${isMoment ? 'moment-title-text mini-moment-title-text' : (isDarkCard ? 'text-white' : 'text-zinc-900')}`}>
+                {isMoment && card.momentTitle ? card.momentTitle : card.name}
+              </h3>
+              {(card.isSpecialSBC || ['legend_sbc', 'icon_sbc', 'moments_sbc'].includes(card.rarity)) && (
+                <span className="bg-gradient-to-r from-amber-400 to-amber-500 text-black text-[6px] font-black px-1 py-0.2 rounded shadow-md border border-amber-200/50 leading-tight">SBC</span>
+              )}
+            </div>
+            <span className={`text-[6px] font-bold uppercase tracking-tighter truncate ${isDarkCard ? 'text-white/70 shadow-black' : 'text-zinc-700'}`}>
+              {isMoment ? card.name : card.subtitle} • {card.age}Y
             </span>
           </div>
           <div className="bg-black/80 backdrop-blur-sm rounded px-1 py-0.5 border border-white/20">
-            <span className="text-[9px] font-black text-white italic leading-none">{card.stats.ovr}</span>
+            <span className="text-[9px] font-black text-white italic leading-none">{displayOvr}</span>
+          </div>
+        </div>
+      );
+    }
+
+    if (isScream) {
+      return (
+        <div className="px-2.5 py-1 flex justify-between items-center z-20 shrink-0">
+          <div className="flex flex-col flex-1 min-w-0 pr-2">
+            <div className="flex items-center gap-1.5 min-w-0">
+              <h3 className="text-[14px] sm:text-[15px] md:text-base font-black uppercase tracking-tight leading-none drop-shadow-md italic text-white truncate">
+                {card.name}
+              </h3>
+              <span className="bg-gradient-to-r from-orange-500 via-amber-500 to-purple-600 text-white text-[7px] md:text-[8px] font-black px-1.5 py-0.5 rounded shadow-[0_0_12px_rgba(249,115,22,0.8)] border border-orange-300 uppercase tracking-wider shrink-0 whitespace-nowrap">
+                🎃 SCREAM
+              </span>
+            </div>
+            <span className="text-[7px] md:text-[8px] font-bold uppercase tracking-wider mt-0.5 whitespace-nowrap overflow-hidden text-ellipsis text-orange-300/90">
+              {card.team} • HALLOWEEN SPECIAL
+            </span>
+          </div>
+          <div className="flex items-center gap-1 shrink-0 bg-black/90 px-1.5 py-0.5 rounded-md border border-orange-500/80 shadow-[0_0_12px_rgba(249,115,22,0.6)]">
+            <span className="text-[7.5px] md:text-[8.5px] font-black uppercase tracking-wider text-orange-400">
+              OVR
+            </span>
+            <span className="text-lg md:text-xl font-black leading-none drop-shadow-sm italic text-orange-400">
+              {displayOvr}
+            </span>
           </div>
         </div>
       );
@@ -287,20 +379,25 @@ const CardItem: React.FC<CardItemProps> = memo(({ card, isOwned, mode = 'mini', 
               {card.momentTitle}
             </h3>
           ) : (
-            <h3 className={`text-base md:text-lg font-black uppercase tracking-tighter leading-[0.9] drop-shadow-sm italic ${isDarkCard ? 'card-text-primary' : 'text-zinc-900'} truncate`}>
-              {card.name}
-            </h3>
+            <div className="flex items-center gap-2">
+              <h3 className={`text-base md:text-lg font-black uppercase tracking-tighter leading-[0.9] drop-shadow-sm italic ${isDarkCard ? 'card-text-primary' : 'text-zinc-900'} truncate`}>
+                {card.name}
+              </h3>
+              {(card.isSpecialSBC || ['legend_sbc', 'icon_sbc', 'moments_sbc'].includes(card.rarity)) && (
+                <span className="bg-gradient-to-r from-amber-400 via-amber-300 to-yellow-500 text-black text-[8px] font-black px-2 py-0.5 rounded shadow-[0_0_12px_rgba(245,158,11,0.6)] border border-amber-200 uppercase tracking-wider">SBC REWARD</span>
+              )}
+            </div>
           )}
           <span className={`text-[7px] md:text-[9px] font-bold uppercase tracking-widest mt-0.5 whitespace-nowrap overflow-hidden text-ellipsis ${isDarkCard ? 'card-text-secondary' : 'text-zinc-700'} ${isXFactor ? 'font-mono tracking-[0.2em] text-blue-300' : ''}`}>
             {isXFactor ? 'X-FACTOR' : isMoment ? card.name : card.subtitle}
           </span>
         </div>
         <div className="flex items-center gap-0.5 shrink-0">
-          <span className={`text-[10px] font-bold uppercase drop-shadow-sm ${isDarkCard ? 'text-red-400' : 'text-red-700'}`}>
+          <span className={`text-[10px] font-bold uppercase drop-shadow-sm ${isDarkCard ? 'text-red-400 font-black' : 'text-red-700 font-black'}`}>
             OVR
           </span>
           <span className={`text-xl md:text-2xl font-black leading-none drop-shadow-sm italic ${isDarkCard ? 'card-text-primary' : 'text-zinc-900'}`}>
-            {card.stats.ovr}
+            {displayOvr}
           </span>
         </div>
       </div>
@@ -310,7 +407,14 @@ const CardItem: React.FC<CardItemProps> = memo(({ card, isOwned, mode = 'mini', 
   const renderPhoto = () => {
     const photoContent = (
       <>
-        {isMoment && (
+        {isScream && (
+          <div className={`absolute ${isMini ? 'top-6 right-1' : 'top-2 right-2'} z-[50]`}>
+            <div className="text-[6px] md:text-[8px] font-black bg-orange-950/90 text-orange-300 border border-orange-500/80 px-1.5 py-0.5 rounded-full shadow-[0_0_8px_rgba(249,115,22,0.6)]">
+              🎃 HALLOWEEN
+            </div>
+          </div>
+        )}
+        {isMoment && !isScream && (
           <>
             <div className={`absolute ${isMini ? 'top-6 right-1' : 'top-2 right-2'} z-[50]`}>
               <div className={isMini ? "text-[4px] font-black bg-amber-500 text-black px-1 rounded-sm" : "moment-badge"}>MOMENT</div>
@@ -324,17 +428,34 @@ const CardItem: React.FC<CardItemProps> = memo(({ card, isOwned, mode = 'mini', 
             )}
           </>
         )}
-        <img
-          src={card.imageUrl}
-          alt={card.name}
-          className={`w-full h-full object-cover object-top transition-transform duration-500 ${isMini ? 'group-hover/mini:scale-110' : ''} ${isVintage ? 'card-vintage' : ''} ${isMoment ? 'brightness-110 contrast-110' : ''}`}
-          referrerPolicy="no-referrer"
-          loading="lazy"
-          decoding="async"
-          {...(isFocused || !isMini ? { fetchPriority: "high" } : { fetchPriority: "low" })}
-        />
+        {!imageLoaded && !imageError && (
+          <div className="absolute inset-0 bg-gradient-to-b from-zinc-850 to-zinc-950 animate-pulse flex items-center justify-center z-10">
+            <div className="w-8 h-8 rounded-full border-2 border-white/5 border-t-amber-500 animate-spin" />
+          </div>
+        )}
+        {imageError ? (
+          <div className="absolute inset-0 bg-gradient-to-b from-zinc-900 to-black flex flex-col items-center justify-center p-2 text-center select-none z-10">
+            <span className={`font-black tracking-tighter uppercase italic leading-none ${isScream ? 'text-orange-400' : 'text-zinc-700'} ${isMini ? 'text-lg' : 'text-3xl'}`}>
+              {card.name.split(' ').map(n => n[0]).join('')}
+            </span>
+            <span className={`font-black uppercase mt-1 tracking-widest leading-none ${isScream ? 'text-orange-300' : 'text-zinc-600'} ${isMini ? 'text-[5px]' : 'text-[8px]'}`}>NO PHOTO</span>
+          </div>
+        ) : (
+          <img
+            src={card.imageUrl}
+            alt={card.name}
+            onLoad={() => setImageLoaded(true)}
+            onError={() => setImageError(true)}
+            style={card.imagePosition ? { objectPosition: card.imagePosition } : undefined}
+            className={`w-full h-full object-cover ${card.imagePosition ? '' : 'object-top'} transition-all duration-500 ${imageLoaded ? 'opacity-100 scale-100' : 'opacity-0 scale-95'} ${isMini ? 'group-hover/mini:scale-110' : ''} ${isVintage ? 'card-vintage' : ''} ${isMoment ? 'brightness-110 contrast-110' : ''}`}
+            referrerPolicy="no-referrer"
+            loading="lazy"
+            decoding="async"
+            {...(isFocused || !isMini ? { fetchPriority: "high" } : { fetchPriority: "low" })}
+          />
+        )}
         <div className={`absolute inset-0 ${isMini ? 'bg-gradient-to-t from-black/90 via-transparent to-transparent' : 'opacity-30 z-10'}`} 
-             style={!isMini ? { background: `linear-gradient(to bottom, ${card.teamColor}, transparent)` } : {}} />
+             style={isScream ? { background: `radial-gradient(circle at 50% 30%, ${card.teamColor || '#552583'} 0%, #18062b 60%, #08020e 100%)` } : (!isMini ? { background: `linear-gradient(to bottom, ${card.teamColor}, transparent)` } : {})} />
       </>
     );
 
@@ -346,9 +467,27 @@ const CardItem: React.FC<CardItemProps> = memo(({ card, isOwned, mode = 'mini', 
       );
     }
 
+    if (isScream) {
+      return (
+        <div className="relative mx-1.5 mb-1 bg-zinc-950 overflow-hidden rounded-lg border-2 border-orange-500/80 shadow-[0_0_25px_rgba(249,115,22,0.5)] z-30 flex-1">
+          <div className="w-full h-full relative overflow-hidden bg-zinc-950">
+            {photoContent}
+            {/* Position Pill on bottom-left of photo */}
+            {card.position && !isMini && (
+              <div className="absolute bottom-1.5 left-1.5 z-40">
+                <span className="px-1.5 py-0.5 rounded bg-black/85 border border-orange-500/60 text-orange-300 text-[8px] font-black uppercase tracking-wider shadow-md">
+                  {card.position}
+                </span>
+              </div>
+            )}
+          </div>
+        </div>
+      );
+    }
+
     return (
-      <div className={`relative mx-2 mb-1 bg-white overflow-hidden rounded-sm border-[1.5px] border-black/10 shadow-md z-30 flex-1 ${isMoment ? 'moment-photo-mask' : ''}`}>
-        <div className="w-full h-full relative overflow-hidden bg-zinc-200">
+      <div className={`relative mx-2 mb-1 bg-zinc-950 overflow-hidden rounded-md border-[2px] border-black/10 shadow-md z-30 flex-1 ${isMoment ? 'moment-photo-mask' : ''}`}>
+        <div className="w-full h-full relative overflow-hidden bg-zinc-950">
           {photoContent}
         </div>
       </div>
@@ -356,19 +495,66 @@ const CardItem: React.FC<CardItemProps> = memo(({ card, isOwned, mode = 'mini', 
   };
 
   const renderStats = () => {
-    const stats = [
-      { label: card.category === 'Coach' || card.category === 'Coach of the Year' || card.category === 'Logo' ? 'WINS' : card.category === 'Arena' ? 'CAP' : 'PTS', value: card.stats.points, color: 'bg-amber-400', borderColor: 'border-amber-600' },
-      { label: card.category === 'Coach' ? 'TITLES' : card.category === 'Coach of the Year' || card.category === 'Logo' ? 'LOSSES' : card.category === 'Arena' ? 'YEAR' : 'REB', value: card.stats.rebounds, color: 'bg-zinc-400', borderColor: 'border-zinc-600' },
-      { label: card.category === 'Coach' ? 'EXP' : card.category === 'Coach of the Year' || card.category === 'Logo' ? 'TITLES' : card.category === 'Arena' ? 'TYPE' : 'AST', value: card.stats.assists, color: 'bg-blue-400', borderColor: 'border-blue-600' },
-    ];
+    // User requirement: "trau les estadistiques de les cartes de halloween"
+    if (isScream) {
+      if (isMini) {
+        return (
+          <div className="flex items-center justify-between px-1.5 py-0.5 bg-gradient-to-r from-orange-950/80 via-purple-950/80 to-black rounded border border-orange-500/40 shrink-0">
+            <span className="text-[6.5px] font-black text-orange-300 uppercase tracking-widest leading-none">
+              🎃 SCREAM
+            </span>
+            <span className="text-[6px] font-extrabold text-purple-300 uppercase tracking-tight">
+              SPECIAL
+            </span>
+          </div>
+        );
+      }
+
+      return (
+        <div className="px-2.5 py-0.5 flex items-center justify-between bg-gradient-to-r from-orange-950/90 via-purple-950/80 to-black border-t border-b border-orange-500/40 shrink-0">
+          <div className="flex items-center gap-1 min-w-0">
+            <span className="text-[9px]">🎃</span>
+            <span className="text-[8px] md:text-[9px] font-black uppercase tracking-wider text-orange-300 truncate">
+              SCREAM EDITION
+            </span>
+          </div>
+          <span className="px-1.5 py-0.2 rounded bg-orange-500/20 border border-orange-500/40 text-orange-400 text-[6.5px] md:text-[7.5px] font-black tracking-widest uppercase shrink-0">
+            HALLOWEEN
+          </span>
+        </div>
+      );
+    }
+
+    const formatVal = (val: any) => {
+      if (typeof val === 'number') {
+        if (val > 45 && val !== 50.4) return Math.round(val);
+        return Number.isInteger(val) ? val : val.toFixed(1);
+      }
+      return val ?? 0;
+    };
+
+    const signatureStats = card.signatureStats;
+
+    const stats = (signatureStats && signatureStats.length === 3) 
+      ? signatureStats.map((st, idx) => ({
+          label: st.label,
+          value: st.value,
+          color: st.color || (idx === 0 ? 'bg-amber-400' : idx === 1 ? 'bg-zinc-400' : 'bg-blue-400'),
+          borderColor: idx === 0 ? 'border-amber-600' : idx === 1 ? 'border-zinc-600' : 'border-blue-600'
+        }))
+      : [
+          { label: card.category === 'Coach' || card.category === 'Coach of the Year' || card.category === 'Logo' ? 'WINS' : card.category === 'Arena' ? 'CAP' : 'PTS', value: formatVal(displayStats?.points ?? card.pts), color: 'bg-amber-400', borderColor: 'border-amber-600' },
+          { label: card.category === 'Coach' || card.category === 'Coach of the Year' || card.category === 'Logo' ? 'LOSSES' : card.category === 'Arena' ? 'YEAR' : 'REB', value: formatVal(displayStats?.rebounds ?? card.reb), color: 'bg-zinc-400', borderColor: 'border-zinc-600' },
+          { label: card.category === 'Coach' ? 'RINGS' : card.category === 'Coach of the Year' || card.category === 'Logo' ? 'TITLES' : card.category === 'Arena' ? 'TYPE' : 'AST', value: formatVal(displayStats?.assists ?? card.ast), color: 'bg-blue-400', borderColor: 'border-blue-600' },
+        ];
 
     if (isMini) {
       return (
         <div className="grid grid-cols-3 gap-0.5 pt-0.5 shrink-0">
           {stats.map((s, i) => (
             <div key={i} className="flex flex-col items-center">
-              <span className="text-[6px] font-black text-zinc-500 uppercase tracking-tighter leading-none">{s.label}</span>
-              <span className="text-[9px] font-black text-white leading-none mt-0.5">{s.value}</span>
+              <span className="text-[6px] font-black text-zinc-400 uppercase tracking-tighter leading-none">{s.label}</span>
+              <span className="text-[9px] font-black text-white leading-none mt-0.5 drop-shadow-sm">{s.value}</span>
             </div>
           ))}
         </div>
@@ -380,10 +566,15 @@ const CardItem: React.FC<CardItemProps> = memo(({ card, isOwned, mode = 'mini', 
         <div className={`grid grid-cols-3 w-full py-1 border-b ${isDarkCard ? 'card-border-subtle' : 'border-black/5'}`}>
           {stats.map((s, i) => (
             <div key={i} className="flex flex-col items-center justify-center border-r border-black/5 last:border-r-0">
-              <div className={`w-3 h-3 rounded-full ${s.color} ${s.borderColor} border shadow-sm mb-0.5`} />
-              <span className={`text-[9px] font-black leading-none ${isDarkCard ? 'card-text-primary' : 'text-zinc-900'}`}>
-                {s.value} <span className={`text-[6px] opacity-60 ${isDarkCard ? 'card-text-muted' : ''}`}>{s.label}</span>
-              </span>
+              <div className={`w-3 h-3 rounded-full ${s.color} ${s.borderColor} border shadow-inner mb-1`} />
+              <div className="flex flex-col items-center">
+                <span className={`text-[10px] font-black leading-none drop-shadow-sm ${isDarkCard ? 'text-white' : 'text-zinc-950'}`}>
+                  {s.value}
+                </span>
+                <span className={`text-[6px] font-bold uppercase tracking-tighter opacity-70 ${isDarkCard ? 'text-white/80' : 'text-zinc-950/80'} mt-0.5`}>
+                  {s.label}
+                </span>
+              </div>
             </div>
           ))}
         </div>
@@ -395,28 +586,28 @@ const CardItem: React.FC<CardItemProps> = memo(({ card, isOwned, mode = 'mini', 
     if (isMini) {
       return (
         <div className="flex-1 flex items-center justify-center px-1 min-h-0">
-          <p className="text-[8px] text-zinc-400 italic leading-none text-center line-clamp-1">
-            {card.description}
+          <p className={`text-[8px] italic leading-none text-center line-clamp-1 ${isScream ? 'text-orange-200/90 font-medium' : 'text-zinc-400'}`}>
+            "{card.quote || card.description}"
           </p>
         </div>
       );
     }
 
     return (
-      <div className="px-4 h-1/2 flex flex-col justify-center min-h-0 overflow-hidden shrink-0">
-        {isMoment && card.quote && (
-          <div className="flex gap-2 items-start mb-0.5">
-            <div className="w-0.5 h-full bg-amber-500/50 rounded-full shrink-0" />
-            <p className="text-[9px] md:text-[10px] italic leading-tight text-zinc-400 text-left line-clamp-1">
-              {card.quote}
+      <div className={`px-3 flex-1 flex flex-col justify-center min-h-0 overflow-hidden ${isScream ? 'py-0.5' : 'h-1/2'}`}>
+        {(card.quote || isMoment) && (
+          <div className="flex gap-1.5 items-start mb-0.5">
+            <div className={`w-0.5 h-full ${isScream ? 'bg-orange-500' : 'bg-amber-500/50'} rounded-full shrink-0`} />
+            <p className={`text-[9px] md:text-[10px] italic leading-tight text-left line-clamp-1 ${isScream ? 'text-orange-200/90 font-medium' : 'text-zinc-400'}`}>
+              "{card.quote || card.description}"
             </p>
           </div>
         )}
-        <p className={`text-[10px] md:text-[11px] italic leading-tight text-center line-clamp-2 font-medium ${isDarkCard ? 'card-text-secondary' : 'text-zinc-800'}`}>
+        <p className={`text-[9.5px] md:text-[11px] italic leading-tight text-center line-clamp-2 font-medium ${isScream ? 'text-orange-200/90' : isDarkCard ? 'card-text-secondary' : 'text-zinc-800'}`}>
           {isMoment && card.momentDate && (
             <span className="block font-black not-italic text-[7px] mb-0.5 text-amber-500 uppercase">{card.momentDate}</span>
           )}
-          "{card.description}"
+          {isScream && !card.quote ? `"${card.description}"` : !isMoment && !isScream ? `"${card.description}"` : null}
         </p>
       </div>
     );
@@ -431,13 +622,43 @@ const CardItem: React.FC<CardItemProps> = memo(({ card, isOwned, mode = 'mini', 
               {card.teamLogoUrl && (
                 <img src={card.teamLogoUrl} alt="" className="w-3 h-3 object-contain opacity-80 shrink-0" referrerPolicy="no-referrer" loading="lazy" decoding="async" />
               )}
-              <span className="text-[6px] font-black text-zinc-400 uppercase tracking-tight leading-none truncate">{card.teamAbbr}</span>
+              <span className={`text-[6px] font-black uppercase tracking-tight leading-none truncate ${isScream ? 'text-orange-300' : 'text-zinc-400'}`}>{card.teamAbbr}</span>
             </div>
             <div className="flex justify-center">
               <div className="w-2 h-2 rounded-full shrink-0 border border-white/10" style={{ backgroundColor: RarityColor }} />
             </div>
             <div className="flex justify-end">
-              <span className="text-[6px] font-bold text-zinc-600 shrink-0">#{card.number}</span>
+              <span className={`text-[6px] font-bold shrink-0 ${isScream ? 'text-orange-400/80' : 'text-zinc-600'}`}>#{card.number}</span>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    if (isScream) {
+      return (
+        <div className="px-2.5 h-1/3 border-t border-orange-500/20 bg-black/60 shrink-0 flex items-center mt-auto">
+          <div className="grid grid-cols-3 w-full items-center">
+            <div className="flex items-center gap-1 min-w-0">
+              {card.teamLogoUrl && (
+                <img src={card.teamLogoUrl} alt="" className="w-3.5 h-3.5 object-contain drop-shadow-sm shrink-0" referrerPolicy="no-referrer" loading="lazy" decoding="async" />
+              )}
+              <div className="flex flex-col min-w-0">
+                <span className="text-[6.5px] font-black uppercase leading-none mb-0.5 text-orange-400">TEAM</span>
+                <span className="text-[7.5px] md:text-[8px] font-black uppercase tracking-tighter leading-none truncate text-orange-200">
+                  {card.team}
+                </span>
+              </div>
+            </div>
+            <div className="flex flex-col items-center justify-center">
+              <span className="text-[6.5px] font-black uppercase leading-none mb-0.5 text-orange-400">EVENT</span>
+              <span className="text-[7px] font-black text-orange-300 uppercase tracking-wider">HALLOWEEN</span>
+            </div>
+            <div className="flex flex-col items-end justify-center">
+              <span className="text-[6.5px] font-black uppercase leading-none mb-0.5 text-orange-400">CARD NO.</span>
+              <span className="text-[7px] md:text-[8px] font-bold text-orange-300">
+                #{card.number}
+              </span>
             </div>
           </div>
         </div>
@@ -499,12 +720,12 @@ const CardItem: React.FC<CardItemProps> = memo(({ card, isOwned, mode = 'mini', 
       {renderNewBadge()}
       {renderQuantityBadge()}
 
-      <div className="h-[65%] shrink-0 flex flex-col relative overflow-hidden">
+      <div className={`${isScream && !isMini ? 'h-[78%]' : 'h-[65%]'} shrink-0 flex flex-col relative overflow-hidden`}>
         {renderHeader()}
         {renderPhoto()}
       </div>
 
-      <div className={`h-[35%] flex flex-col justify-between relative overflow-hidden ${isMini ? 'bg-zinc-950 px-1.5 py-1 border-t border-white/10' : 'bg-gradient-to-b from-transparent to-black/40 border-t border-white/5'}`}>
+      <div className={`${isScream && !isMini ? 'h-[22%]' : 'h-[35%]'} flex flex-col justify-between relative overflow-hidden ${isMini ? 'bg-zinc-950 px-1.5 py-1 border-t border-white/10' : isScream ? 'bg-gradient-to-b from-black/40 via-purple-950/20 to-black/80 border-t border-orange-500/20' : 'bg-gradient-to-b from-transparent to-black/40 border-t border-white/5'}`}>
         {renderStats()}
         {renderInfo()}
         {renderFooter()}
@@ -513,6 +734,129 @@ const CardItem: React.FC<CardItemProps> = memo(({ card, isOwned, mode = 'mini', 
       {renderLockOverlay()}
     </div>
   );
+
+  if (mode === 'condensed') {
+    return (
+      <div 
+        onClick={() => (isOwned || showBack) && onClick?.(card)}
+        className={`flex items-center gap-3 bg-zinc-900/80 p-2 rounded-xl border border-white/5 h-20 transition-all active:scale-95 ${isOwned ? 'cursor-pointer hover:bg-white/5' : 'opacity-50'}`}
+      >
+         <div className="w-16 h-16 bg-zinc-850 rounded-lg overflow-hidden shrink-0 relative flex items-center justify-center">
+            {!imageLoaded && !imageError && (
+              <div className="absolute inset-0 bg-gradient-to-b from-zinc-800 to-zinc-900 animate-pulse flex items-center justify-center z-10" />
+            )}
+            {imageError ? (
+              <div className="absolute inset-0 bg-zinc-900 flex flex-col items-center justify-center text-center select-none z-10">
+                <span className="font-black tracking-tighter uppercase italic text-xs leading-none text-zinc-700">
+                  {card.name.split(' ').map(n => n[0]).join('')}
+                </span>
+              </div>
+            ) : (
+              <img
+                src={card.imageUrl}
+                alt={card.name}
+                onLoad={() => setImageLoaded(true)}
+                onError={() => setImageError(true)}
+                className={`w-full h-full object-cover object-top transition-all duration-300 ${imageLoaded ? 'opacity-100 scale-100' : 'opacity-0 scale-95'}`}
+                referrerPolicy="no-referrer"
+              />
+            )}
+            <div className="absolute top-0 right-0 bg-white text-black text-[8px] font-black px-1 rounded-bl-md shadow-lg z-20">
+               {displayOvr}
+            </div>
+         </div>
+         <div className="flex-1 min-w-0 pr-2">
+            <div className="flex items-center justify-between mb-1">
+               <h4 className="text-[10px] md:text-sm font-black text-white uppercase italic truncate max-w-[120px]">{card.name}</h4>
+               <span className="text-[7px] font-black text-zinc-500 uppercase tracking-widest">{card.position}</span>
+            </div>
+            <div className="flex items-center gap-3">
+              {card.signatureStats && card.signatureStats.length === 3 ? (
+                <>
+                  {card.signatureStats.map((st, i) => (
+                    <React.Fragment key={i}>
+                      {i > 0 && <div className="w-px h-4 bg-white/5" />}
+                      <div className="flex flex-col">
+                        <span className="text-[6px] font-black text-zinc-500 uppercase">{st.label}</span>
+                        <span className="text-[10px] font-black text-amber-400 italic leading-none">{st.value}</span>
+                      </div>
+                    </React.Fragment>
+                  ))}
+                </>
+              ) : (
+                <>
+                  <div className="flex flex-col">
+                    <span className="text-[6px] font-black text-zinc-600 uppercase">PTS</span>
+                    <span className="text-[10px] font-black text-amber-500 italic leading-none">{displayStats.points}</span>
+                  </div>
+                  <div className="w-px h-4 bg-white/5" />
+                  <div className="flex flex-col">
+                    <span className="text-[6px] font-black text-zinc-600 uppercase">REB</span>
+                    <span className="text-[10px] font-black text-white italic leading-none">{displayStats.rebounds}</span>
+                  </div>
+                  <div className="w-px h-4 bg-white/5" />
+                  <div className="flex flex-col">
+                    <span className="text-[6px] font-black text-zinc-600 uppercase">AST</span>
+                    <span className="text-[10px] font-black text-white italic leading-none">{displayStats.assists}</span>
+                  </div>
+                </>
+              )}
+               {card.age && (
+                 <>
+                   <div className="w-px h-4 bg-white/5" />
+                   <div className="flex flex-col">
+                      <span className="text-[6px] font-black text-zinc-600 uppercase">AGE</span>
+                      <span className="text-[10px] font-black text-zinc-400 italic leading-none">{card.age}</span>
+                   </div>
+                 </>
+               )}
+            </div>
+         </div>
+      </div>
+    );
+  }
+
+  if (width) {
+    const DESIGN_WIDTH = 220;
+    const DESIGN_HEIGHT = 308;
+    const scaleFactor = width / DESIGN_WIDTH;
+    
+    return (
+      <div 
+        style={{ 
+          width: width, 
+          height: width * 1.4, 
+          position: 'relative',
+          flexShrink: 0,
+          overflow: 'visible'
+        }}
+        onClick={() => (isOwned || showBack) && onClick?.(card)}
+        className={`shrink-0 select-none ${isOwned ? 'cursor-pointer' : 'cursor-default'}`}
+      >
+        <div 
+          style={{
+            width: DESIGN_WIDTH,
+            height: DESIGN_HEIGHT,
+            transform: `scale(${scaleFactor})`,
+            transformOrigin: 'top left',
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            pointerEvents: 'auto'
+          }}
+        >
+          <div 
+            className={`nba-card relative flex flex-col h-full rounded-xl overflow-hidden transition-all ${!showBack ? `${rarityClass} ${categoryClass} ${isDarkCard ? 'dark-card' : ''}` : 'items-center justify-center bg-zinc-900 border-zinc-800'}`}
+            onMouseMove={handleMouseMove}
+            onMouseLeave={handleMouseLeave}
+            style={cardStyle}
+          >
+            {cardContent}
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (isMini) {
     return (

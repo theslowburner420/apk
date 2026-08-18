@@ -2,6 +2,8 @@ import React, { createContext, useContext, useState, useEffect, useCallback, use
 import { GameState, ViewType, Card, User, FranchiseState, CareerMatch as SeasonMatch } from '../types';
 import { ACHIEVEMENTS } from '../constants/achievements';
 import { supabase } from '../lib/supabase';
+import { Capacitor } from '@capacitor/core';
+import { GoogleAuth } from '@codetrix-studio/capacitor-google-auth';
 
 interface GameContextType extends GameState {
   isAuthLoading: boolean;
@@ -37,6 +39,26 @@ interface GameContextType extends GameState {
 
 const GameContext = createContext<GameContextType | undefined>(undefined);
 
+const normalizePacks = (packs: any[]) => {
+  const groups: Record<string, any> = {};
+  (packs || []).forEach(pack => {
+    const type = pack.type;
+    // Normalize type to lowercase to avoid "allstar" vs "AllStar" issues
+    const normalizedType = type?.toLowerCase() || 'random';
+    if (!groups[normalizedType]) {
+      groups[normalizedType] = { 
+        ...pack, 
+        type: normalizedType,
+        id: normalizedType, 
+        count: Number(pack.count) || 1 
+      };
+    } else {
+      groups[normalizedType].count += (Number(pack.count) || 1);
+    }
+  });
+  return Object.values(groups);
+};
+
 export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [state, setState] = useState<GameState>(() => {
     // Try to load guest progress if it exists
@@ -53,9 +75,12 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
       claimedAchievements: initialGuestState?.claimedAchievements ?? [],
       lastClaimedDate: initialGuestState?.lastClaimedDate ?? null,
       claimedDays: initialGuestState?.claimedDays ?? [],
-      inventoryPacks: initialGuestState?.inventoryPacks ?? [],
+      inventoryPacks: normalizePacks(initialGuestState?.inventoryPacks ?? []),
       isPremium: initialGuestState?.isPremium ?? false,
+      hasLifetimeNoAds: initialGuestState?.hasLifetimeNoAds ?? false,
+      subscriptionExpiry: initialGuestState?.subscriptionExpiry ?? null,
       franchise: initialGuestState?.franchise ?? undefined,
+      completedSbcs: initialGuestState?.completedSbcs ?? [],
     };
   });
 
@@ -79,8 +104,11 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const isFirstLoad = useRef(true);
 
   useEffect(() => {
-    stateRef.current = state;
     isInitialSyncDoneRef.current = isInitialSyncDone;
+  }, [isInitialSyncDone]);
+
+  useEffect(() => {
+    stateRef.current = state;
     
     // Save guest progress to localStorage ONLY if not logged in
     if (!state.user) {
@@ -94,18 +122,31 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
         claimedDays: state.claimedDays,
         inventoryPacks: state.inventoryPacks,
         isPremium: state.isPremium,
+        hasLifetimeNoAds: state.hasLifetimeNoAds,
+        subscriptionExpiry: state.subscriptionExpiry,
         franchise: state.franchise,
+        completedSbcs: state.completedSbcs,
       };
       localStorage.setItem('GUEST_PROGRESS', JSON.stringify(guestData));
     } else {
-      // Emergency Mirror for logged in users (prevents loss if cloud fetch fails)
+      // Complete backup for logged in users (prevents loss if cloud fetch fails or drops fields)
       const mirrorData = {
         coins: state.coins,
         collection: state.collection,
+        customCards: state.customCards,
+        unlockedAchievements: state.unlockedAchievements,
+        claimedAchievements: state.claimedAchievements,
+        lastClaimedDate: state.lastClaimedDate,
+        claimedDays: state.claimedDays,
         inventoryPacks: state.inventoryPacks,
-        isPremium: state.isPremium
+        completedSbcs: state.completedSbcs,
+        isPremium: state.isPremium,
+        hasLifetimeNoAds: state.hasLifetimeNoAds,
+        subscriptionExpiry: state.subscriptionExpiry,
+        franchise: state.franchise,
       };
       localStorage.setItem(`BACKUP_${state.user.id}`, JSON.stringify(mirrorData));
+      localStorage.setItem(`USER_PROGRESS_${state.user.id}`, JSON.stringify(mirrorData));
     }
   }, [state]);
 
@@ -127,16 +168,30 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
         ? newState.collection 
         : Object.entries(newState.collection).flatMap(([id, count]) => Array(Number(count) || 0).fill(id));
 
+      const claimedArray = Array.isArray(newState.claimedAchievements) ? newState.claimedAchievements : [];
+      const unlockedArray = Array.isArray(newState.unlockedAchievements) ? newState.unlockedAchievements : [];
+      
+      // Encode claimed tags inside unlocked_achievements text[] array
+      // This ensures 100% cloud persistence even if PostgreSQL profiles table lacks the claimed_achievements column
+      const claimedTags = claimedArray.map(id => `CLAIMED_${id}`);
+      const cleanUnlockedOnly = unlockedArray.filter(id => typeof id === 'string' && !id.startsWith('CLAIMED_'));
+      const combinedUnlockedForSupabase = Array.from(new Set([
+        ...cleanUnlockedOnly,
+        ...claimedTags
+      ]));
+
       const payload = {
         id: newState.user.id,
         username: newState.user.username,
         avatar_url: newState.user.avatar_url,
         coins: Number(newState.coins) || 0,
         cards: flattenedCards,
-        unlocked_achievements: Array.isArray(newState.unlockedAchievements) ? newState.unlockedAchievements : [],
-        claimed_achievements: Array.isArray(newState.claimedAchievements) ? newState.claimedAchievements : [],
+        unlocked_achievements: combinedUnlockedForSupabase,
+        claimed_achievements: claimedArray,
         inventory_packs: Array.isArray(newState.inventoryPacks) ? newState.inventoryPacks : [],
-        ads_disabled: !!newState.isPremium,
+        completed_sbcs: Array.isArray(newState.completedSbcs) ? newState.completedSbcs : [],
+        ads_disabled: !!(newState.isPremium || newState.hasLifetimeNoAds || (newState.subscriptionExpiry && new Date(newState.subscriptionExpiry) > new Date())),
+        subscription_expiry: newState.subscriptionExpiry,
         franchise_state: newState.franchise ? JSON.stringify(newState.franchise) : null,
         last_claimed_date: newState.lastClaimedDate,
         claimed_days: newState.claimedDays,
@@ -149,6 +204,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
         unlockedAchievements: payload.unlocked_achievements,
         claimedAchievements: payload.claimed_achievements,
         inventoryPacks: payload.inventory_packs,
+        completedSbcs: payload.completed_sbcs,
         isPremium: payload.ads_disabled,
         last_claimed_date: payload.last_claimed_date,
         claimed_days: payload.claimed_days,
@@ -181,7 +237,11 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
             console.error(`❌ Supabase Error ${status} (Attempt ${attempt}):`, error);
             
             // Detect missing column errors and retry without them
-            const missingColumnMatch = error.message?.match(/column "(.+)" of relation "profiles" does not exist/);
+            // Format 1: PostgreSQL native error (column "x" does not exist)
+            // Format 2: PostgREST schema cache error (Could not find the 'x' column of 'profiles' in the schema cache)
+            const missingColumnMatch = error.message?.match(/column "(.+)" of relation "profiles" does not exist/) || 
+                                     error.message?.match(/Could not find the '(.+)' column/);
+            
             if (missingColumnMatch && missingColumnMatch[1]) {
               const missingField = missingColumnMatch[1];
               if (!omitFields.includes(missingField)) {
@@ -286,26 +346,30 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       const currentLiveState = stateRef.current;
       const savedGuest = localStorage.getItem('GUEST_PROGRESS');
+      const savedUserProgress = localStorage.getItem(`USER_PROGRESS_${user.id}`);
       const savedBackup = localStorage.getItem(`BACKUP_${user.id}`);
       
       let guestData = null;
+      let userDataLocal = null;
       let backupData = null;
       
       try {
         guestData = savedGuest ? JSON.parse(savedGuest) : null;
+        userDataLocal = savedUserProgress ? JSON.parse(savedUserProgress) : null;
         backupData = savedBackup ? JSON.parse(savedBackup) : null;
       } catch (e) {
         console.error('Local data corrupt', e);
       }
       
       const localProgress = {
-        coins: Math.max(currentLiveState.coins, guestData?.coins ?? 0, backupData?.coins ?? 0),
+        coins: Math.max(currentLiveState.coins, guestData?.coins ?? 0, userDataLocal?.coins ?? 0, backupData?.coins ?? 0),
         collection: (() => {
           let merged: Record<string, number> = {};
           
-          // Merge Backup (Most reliable local source for this user)
-          if (backupData?.collection) {
-            Object.entries(backupData.collection).forEach(([id, count]) => {
+          // Merge Backup / UserDataLocal (Most reliable local source for this user)
+          const primaryLocal = userDataLocal || backupData;
+          if (primaryLocal?.collection) {
+            Object.entries(primaryLocal.collection).forEach(([id, count]) => {
               merged[id] = Math.max(merged[id] || 0, count as number);
             });
           }
@@ -334,19 +398,44 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
           }
           return merged;
         })(),
-        unlockedAchievements: Array.from(new Set([...currentLiveState.unlockedAchievements, ...(guestData?.unlockedAchievements || [])])),
-        claimedAchievements: Array.from(new Set([...currentLiveState.claimedAchievements, ...(guestData?.claimedAchievements || [])])),
-        inventoryPacks: currentLiveState.inventoryPacks.length > 0 ? currentLiveState.inventoryPacks : (guestData?.inventoryPacks || []),
-        isPremium: currentLiveState.isPremium || guestData?.isPremium || false,
-        franchise: currentLiveState.franchise || guestData?.franchise || backupData?.franchise,
+        unlockedAchievements: Array.from(new Set([
+          ...currentLiveState.unlockedAchievements,
+          ...(userDataLocal?.unlockedAchievements || []),
+          ...(backupData?.unlockedAchievements || []),
+          ...(guestData?.unlockedAchievements || [])
+        ])),
+        claimedAchievements: Array.from(new Set([
+          ...currentLiveState.claimedAchievements,
+          ...(userDataLocal?.claimedAchievements || []),
+          ...(backupData?.claimedAchievements || []),
+          ...(guestData?.claimedAchievements || [])
+        ])),
+        inventoryPacks: currentLiveState.inventoryPacks.length > 0 ? currentLiveState.inventoryPacks : (userDataLocal?.inventoryPacks || backupData?.inventoryPacks || guestData?.inventoryPacks || []),
+        isPremium: currentLiveState.isPremium || userDataLocal?.isPremium || backupData?.isPremium || guestData?.isPremium || false,
+        hasLifetimeNoAds: currentLiveState.hasLifetimeNoAds || userDataLocal?.hasLifetimeNoAds || backupData?.hasLifetimeNoAds || guestData?.hasLifetimeNoAds || false,
+        subscriptionExpiry: currentLiveState.subscriptionExpiry || userDataLocal?.subscriptionExpiry || backupData?.subscriptionExpiry || guestData?.subscriptionExpiry || null,
+        franchise: currentLiveState.franchise || userDataLocal?.franchise || backupData?.franchise || guestData?.franchise,
+        completedSbcs: Array.from(new Set([
+          ...(currentLiveState.completedSbcs || []),
+          ...(userDataLocal?.completedSbcs || []),
+          ...(backupData?.completedSbcs || []),
+          ...(guestData?.completedSbcs || [])
+        ])),
       };
 
-      // 1. Fetch Cloud Data
-      const { data: cloudProfile, error: fetchError } = await supabase!
+      // 1. Fetch Cloud Data with Timeout
+      const cloudFetchPromise = supabase!
         .from('profiles')
         .select('*')
         .eq('id', user.id)
         .single();
+
+      // Race against a 3s timeout for faster unblocking
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Cloud response timeout')), 3000)
+      );
+
+      const { data: cloudProfile, error: fetchError } = await (Promise.race([cloudFetchPromise, timeoutPromise]) as any);
 
       if (fetchError && fetchError.code !== 'PGRST116') {
         throw fetchError;
@@ -361,45 +450,65 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
         console.log('✨ NEW USER: First sync - Awarding Welcome Pack');
         finalMergedData = {
           ...localProgress,
-          coins: Math.max(localProgress.coins, 100000), // Increased Welcome bonus: 100k
+          coins: Math.max(localProgress.coins, 2500), // Rebalanced Welcome bonus: 2.5k coins
           inventoryPacks: [
             ...localProgress.inventoryPacks,
-            { id: `welcome-mega-${Date.now()}`, type: 'premium', name: 'Welcome Mega Pack', count: 5 },
-            { id: `gift-${Date.now()}`, type: 'mvp', name: 'Finals MVP Pack', count: 3 }
+            { id: `welcome-rookie-${Date.now()}`, type: 'rookie', name: 'Rookie Pack', count: 2 },
+            { id: `welcome-allstar-${Date.now()}`, type: 'allstar', name: 'All-Star Pack', count: 1 }
           ]
         };
         setShowWelcomeGift(true);
       } else {
         console.log('🧬 MERGING CLOUD DATA');
         
+        const rawUnlocked = Array.isArray(cloudProfile.unlocked_achievements) ? cloudProfile.unlocked_achievements : [];
+        const claimedFromUnlocked = rawUnlocked
+          .filter((s: any) => typeof s === 'string' && s.startsWith('CLAIMED_'))
+          .map((s: string) => s.replace('CLAIMED_', ''));
+        const cleanUnlockedOnly = rawUnlocked.filter((s: any) => typeof s === 'string' && !s.startsWith('CLAIMED_'));
+        const rawClaimed = Array.isArray(cloudProfile.claimed_achievements) ? cloudProfile.claimed_achievements : [];
+
+        const cloudClaimed = Array.from(new Set([...rawClaimed, ...claimedFromUnlocked]));
+        const cloudUnlocked = Array.from(new Set([...cleanUnlockedOnly, ...cloudClaimed]));
+
         const pc = {
           coins: Number(cloudProfile.coins) || 0,
           cards: (() => {
             const raw = cloudProfile.cards;
             if (Array.isArray(raw)) {
-              // Migrate cloud legacy array
               const migrated: Record<string, number> = {};
               raw.forEach((id: string) => migrated[id] = (migrated[id] || 0) + 1);
               return migrated;
             }
             return (raw && typeof raw === 'object') ? raw : {};
           })(),
-          unlocked_achievements: Array.isArray(cloudProfile.unlocked_achievements) ? cloudProfile.unlocked_achievements : [],
-          claimed_achievements: Array.isArray(cloudProfile.claimed_achievements) ? cloudProfile.claimed_achievements : [],
+          unlocked_achievements: cloudUnlocked,
+          claimed_achievements: cloudClaimed,
           inventory_packs: Array.isArray(cloudProfile.inventory_packs) ? cloudProfile.inventory_packs : [],
+          completed_sbcs: Array.isArray(cloudProfile.completed_sbcs) ? cloudProfile.completed_sbcs : [],
           ads_disabled: !!cloudProfile.ads_disabled,
-          franchise: cloudProfile.franchise_state ? JSON.parse(cloudProfile.franchise_state) : localProgress.franchise,
+          has_lifetime_no_ads: !!cloudProfile.has_lifetime_no_ads,
+          subscription_expiry: cloudProfile.subscription_expiry,
+          franchise: cloudProfile.franchise_state ? (typeof cloudProfile.franchise_state === 'string' ? JSON.parse(cloudProfile.franchise_state) : cloudProfile.franchise_state) : localProgress.franchise,
         };
 
         const mergeArrays = (a: any[], b: any[]) => Array.from(new Set([...(a || []), ...(b || [])]));
-        
+
+        // Smarter inventory merge
+        const mergePacks = (cloud: any[], local: any[]) => {
+          const merged = [...cloud];
+          local.forEach(lp => {
+            const existing = merged.find(cp => cp.type === lp.type);
+            if (!existing) merged.push(lp);
+            else if (!isInitialSyncDoneRef.current) existing.count = Math.max(existing.count || 1, lp.count || 1);
+          });
+          return normalizePacks(merged);
+        };
+
         finalMergedData = {
-          // If we haven't finished our very first sync ever, we merge guest + cloud cautiously (additive)
-          // Once the app is running (isInitialSyncDoneRef), we TRUST the cloud as the master for logged-in sessions
           coins: isInitialSyncDoneRef.current ? pc.coins : Math.max(pc.coins, localProgress.coins),
           collection: (() => {
-            if (isInitialSyncDoneRef.current) return pc.cards; // Trust cloud master during active session
-            
+            if (isInitialSyncDoneRef.current) return pc.cards; 
             const merged = { ...pc.cards };
             Object.entries(localProgress.collection).forEach(([id, count]) => {
               merged[id] = Math.max(merged[id] || 0, count);
@@ -408,8 +517,11 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
           })(),
           unlockedAchievements: isInitialSyncDoneRef.current ? pc.unlocked_achievements : mergeArrays(pc.unlocked_achievements, localProgress.unlockedAchievements),
           claimedAchievements: isInitialSyncDoneRef.current ? pc.claimed_achievements : mergeArrays(pc.claimed_achievements, localProgress.claimedAchievements),
-          inventoryPacks: isInitialSyncDoneRef.current ? pc.inventory_packs : (pc.inventory_packs.length > localProgress.inventoryPacks.length ? pc.inventory_packs : localProgress.inventoryPacks),
+          inventoryPacks: mergePacks(pc.inventory_packs, localProgress.inventoryPacks),
+          completedSbcs: isInitialSyncDoneRef.current ? pc.completed_sbcs : Array.from(new Set([...(pc.completed_sbcs || []), ...(localProgress.completedSbcs || [])])),
           isPremium: pc.ads_disabled || localProgress.isPremium,
+          hasLifetimeNoAds: (pc as any).has_lifetime_no_ads || localProgress.hasLifetimeNoAds,
+          subscriptionExpiry: pc.subscription_expiry || localProgress.subscriptionExpiry,
           franchise: isInitialSyncDoneRef.current ? pc.franchise : (pc.franchise || localProgress.franchise),
         };
       }
@@ -428,52 +540,91 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
       lastSyncedStateRef.current = ''; 
       await forceSyncToSupabase(mergedState, 3, true, true);
 
-      // Setup/Refresh Real-time
+      // Setup/Refresh Real-time (Non-blocking background sync)
       if (!profileSubscriptionRef.current && supabase) {
-        profileSubscriptionRef.current = supabase
-          .channel(`profile_realtime_${user.id}`)
-          .on('postgres_changes', { 
-            event: 'UPDATE', 
-            schema: 'public', 
-            table: 'profiles', 
-            filter: `id=eq.${user.id}` 
-          }, (payload) => {
-            const updated = payload.new as any;
-            console.log('🔔 Remote update received via Realtime');
-            
-            // CRITICAL: Transform remote cards array to local collection map
-            let migratedCollection = stateRef.current.collection;
-            if (updated.cards && Array.isArray(updated.cards)) {
-              const newMap: Record<string, number> = {};
-              updated.cards.forEach((id: string) => {
-                newMap[id] = (newMap[id] || 0) + 1;
+        try {
+          profileSubscriptionRef.current = supabase
+            .channel(`profile_realtime_${user.id}`)
+            .on('postgres_changes', { 
+              event: 'UPDATE', 
+              schema: 'public', 
+              table: 'profiles', 
+              filter: `id=eq.${user.id}` 
+            }, (payload) => {
+              const updated = payload.new as any;
+              console.log('🔔 Remote update received via Realtime');
+              
+              // CRITICAL: Avoid infinite write loops by checking if the incoming data matches our last synced state
+              const incomingStateString = JSON.stringify({
+                coins: Number(updated.coins) || 0,
+                collection: updated.cards || [],
+                unlockedAchievements: Array.isArray(updated.unlocked_achievements) ? updated.unlocked_achievements : [],
+                claimedAchievements: Array.isArray(updated.claimed_achievements) ? updated.claimed_achievements : [],
+                inventoryPacks: Array.isArray(updated.inventory_packs) ? updated.inventory_packs : [],
+                completedSbcs: Array.isArray(updated.completed_sbcs) ? updated.completed_sbcs : [],
+                isPremium: !!updated.ads_disabled,
+                last_claimed_date: updated.last_claimed_date,
+                claimed_days: updated.claimed_days,
+                userId: user.id
               });
-              migratedCollection = newMap;
-            }
 
-            setState(prev => ({
-              ...prev,
-              coins: updated.coins !== undefined ? Number(updated.coins) : prev.coins,
-              collection: migratedCollection,
-              inventoryPacks: updated.inventory_packs || prev.inventoryPacks,
-              isPremium: updated.ads_disabled !== undefined ? !!updated.ads_disabled : prev.isPremium,
-              franchise: updated.franchise_state ? JSON.parse(updated.franchise_state) : prev.franchise,
-            }));
-            
-            // Sync the ref too to prevent immediate bounce-back save
-            lastSyncedStateRef.current = ''; 
-          }).subscribe();
+              if (incomingStateString === lastSyncedStateRef.current) {
+                console.log('🔄 Remote update matches last synced state, ignoring to prevent loop');
+                return;
+              }
+
+              // CRITICAL: Transform remote cards array to local collection map
+              let migratedCollection = stateRef.current.collection;
+              if (updated.cards && Array.isArray(updated.cards)) {
+                const newMap: Record<string, number> = {};
+                updated.cards.forEach((id: string) => {
+                  newMap[id] = (newMap[id] || 0) + 1;
+                });
+                migratedCollection = newMap;
+              }
+
+              setState(prev => ({
+                ...prev,
+                coins: updated.coins !== undefined ? Number(updated.coins) : prev.coins,
+                collection: migratedCollection,
+                inventoryPacks: updated.inventory_packs || prev.inventoryPacks,
+                completedSbcs: updated.completed_sbcs || prev.completedSbcs,
+                isPremium: updated.ads_disabled !== undefined ? !!updated.ads_disabled : prev.isPremium,
+                franchise: updated.franchise_state ? JSON.parse(updated.franchise_state) : prev.franchise,
+              }));
+              
+              // Sync the ref to prevent a bounce-back save
+              lastSyncedStateRef.current = incomingStateString; 
+            })
+            .subscribe((status, err) => {
+              if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+                console.warn('⚠️ Realtime WebSocket warning (HTTP polling active):', status, err?.message || err);
+              }
+            });
+        } catch (rtErr) {
+          console.warn('⚠️ Realtime subscription setup skipped (HTTP sync active):', rtErr);
+        }
       }
 
+      isInitialSyncDoneRef.current = true;
       setIsInitialSyncDone(true);
       setIsAuthLoading(false);
       setIsBackgroundSaving(false);
     } catch (err: any) {
       console.error('❌ CRITICAL SYNC ERROR:', err);
       setSyncError(`Data Sync Failed: ${err.message || 'Network error'}`);
+      
       setIsAuthLoading(false);
-      // NEVER set isInitialSyncDone(true) here, or auto-save will nuke the cloud data with empty state
       setIsBackgroundSaving(false);
+      
+      // After 5 seconds of failure, let them play locally but warn them
+      setTimeout(() => {
+        if (!isInitialSyncDoneRef.current) {
+          console.warn('⚠️ Sync failed but unblocking UI for local play');
+          isInitialSyncDoneRef.current = true;
+          setIsInitialSyncDone(true);
+        }
+      }, 5000);
     } finally {
       isSyncingRef.current = false;
     }
@@ -483,53 +634,94 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     if (!supabase) {
       setIsAuthLoading(false);
+      isInitialSyncDoneRef.current = true;
       setIsInitialSyncDone(true);
       return;
     }
 
     let mounted = true;
+    let authSubscription: any = null;
 
-    // 1. Initial Session Check (Fast path)
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (!mounted) return;
-      if (session?.user) {
-        console.log('Session found on mount:', session.user.id);
-        syncProfile(session.user);
-      } else {
-        console.log('No session found on mount');
-        setIsAuthLoading(false);
-        setIsInitialSyncDone(true);
-      }
-    });
+    async function initializeAuth() {
+      try {
+        console.log('🔄 Mount: Retrieving session via getSession() first...');
+        const { data: { session }, error } = await supabase!.auth.getSession();
+        
+        if (!mounted) return;
 
-    // 2. Auth Listener - Subscribed once
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (!mounted) return;
-      console.log(`🔐 AUTH EVENT: ${event}`);
-      
-      if (event === 'SIGNED_IN' || event === 'USER_UPDATED' || event === 'INITIAL_SESSION') {
-        // Only trigger sync if user changed or session is fresh
-        if (session?.user && stateRef.current.user?.id !== session.user.id) {
-          await syncProfile(session.user);
+        if (error) {
+          console.error('Session retrieval error on mount:', error);
         }
-      } else if (event === 'SIGNED_OUT') {
-        await syncProfile(null);
+
+        if (session?.user) {
+          console.log('Mount: Valid session found for user:', session.user.id);
+          await syncProfile(session.user);
+        } else {
+          console.log('Mount: No session found on mount');
+          setIsAuthLoading(false);
+          isInitialSyncDoneRef.current = true;
+          setIsInitialSyncDone(true);
+        }
+
+        // 2. Set up auth listener AFTER getSession() has resolved.
+        // This ensures sequential flow and avoids parallel racing fetches.
+        const { data: { subscription } } = supabase!.auth.onAuthStateChange(async (event, currentSession) => {
+          if (!mounted) return;
+          console.log(`🔐 AUTH EVENT: ${event}`);
+          
+          if (event === 'SIGNED_IN' || event === 'USER_UPDATED' || event === 'TOKEN_REFRESHED') {
+            if (currentSession?.user) {
+              const currentUserId = stateRef.current.user?.id;
+              
+              const userData: User = {
+                id: currentSession.user.id,
+                email: currentSession.user.email,
+                username: currentSession.user.user_metadata?.full_name || currentSession.user.email?.split('@')[0],
+                avatar_url: currentSession.user.user_metadata?.avatar_url,
+              };
+
+              // Update user profile immediately
+              setState(prev => ({ ...prev, user: userData }));
+
+              if (currentUserId !== currentSession.user.id || event === 'TOKEN_REFRESHED') {
+                console.log(`🔐 Refreshing state/data for ${event}`);
+                await syncProfile(currentSession.user);
+              }
+            }
+          } else if (event === 'SIGNED_OUT') {
+            await syncProfile(null);
+          }
+        });
+
+        authSubscription = subscription;
+      } catch (err) {
+        console.error('Failure initializing connection:', err);
+        if (mounted) {
+          setIsAuthLoading(false);
+          isInitialSyncDoneRef.current = true;
+          setIsInitialSyncDone(true);
+        }
       }
-    });
+    }
+
+    initializeAuth();
 
     const safetyTimeout = setTimeout(() => {
-      // Extended safety unblock to 10s
+      // Reduced safety unblock to 4s
       if (!isInitialSyncDoneRef.current) {
-        console.warn('⚠️ Safety unblock triggered after 10s');
+        console.warn('⚠️ Safety unblock triggered after 4s');
         setIsAuthLoading(false);
+        isInitialSyncDoneRef.current = true;
         setIsInitialSyncDone(true);
       }
-    }, 10000);
+    }, 4000);
 
     return () => {
       mounted = false;
       clearTimeout(safetyTimeout);
-      subscription.unsubscribe();
+      if (authSubscription) {
+        authSubscription.unsubscribe();
+      }
     };
   }, []); // Strictly empty array to prevent listener re-runs
 
@@ -541,6 +733,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
     unlockedAchievements: state.unlockedAchievements,
     claimedAchievements: state.claimedAchievements,
     inventoryPacks: state.inventoryPacks,
+    completedSbcs: state.completedSbcs,
     isPremium: state.isPremium,
     franchise: state.franchise,
     user: state.user?.id
@@ -586,10 +779,22 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const login = useCallback(async () => {
     if (!supabase) return;
-    await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: { redirectTo: window.location.origin }
-    });
+    try {
+      if (Capacitor.isNativePlatform()) {
+        const googleUser = await GoogleAuth.signIn();
+        await supabase.auth.signInWithIdToken({
+          provider: 'google',
+          token: googleUser.authentication.idToken,
+        });
+      } else {
+        await supabase.auth.signInWithOAuth({
+          provider: 'google',
+          options: { redirectTo: window.location.origin }
+        });
+      }
+    } catch (error) {
+      console.error('Login error:', error);
+    }
   }, []);
 
   const logout = useCallback(async () => {
@@ -606,6 +811,11 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   const updateGameStateAsync = useCallback(async (updates: Partial<GameState>) => {
+    // Normalize inventory packs if present in updates
+    if (updates.inventoryPacks) {
+      updates.inventoryPacks = normalizePacks(updates.inventoryPacks);
+    }
+    
     const newState = { ...stateRef.current, ...updates };
     
     if (newState.user) {
@@ -759,6 +969,41 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [updateGameStateAsync, updateGameState]);
 
+  const claimLoginReward = useCallback(async () => {
+    if (!stateRef.current.user) return;
+    
+    // Prevent duplicate claims of login bonus
+    if (stateRef.current.claimedAchievements.includes('login_bonus')) return;
+
+    let newPacks = [...stateRef.current.inventoryPacks];
+    
+    // Add 2x HOF Packs (matching modal text: 2 HOF + 1 Legendary MVP)
+    const existingHof = newPacks.find(p => p.type === 'hof');
+    if (existingHof) {
+      newPacks = newPacks.map(p => p.type === 'hof' ? { ...p, count: (p.count || 1) + 2 } : p);
+    } else {
+      newPacks.push({ id: `login-hof-${Date.now()}`, type: 'hof', name: 'Hall of Fame Pack', count: 2 });
+    }
+
+    // Add 1x Legendary MVP Pack
+    const existingMvp = newPacks.find(p => p.type === 'legendary_mvp');
+    if (existingMvp) {
+      newPacks = newPacks.map(p => p.type === 'legendary_mvp' ? { ...p, count: (p.count || 1) + 1 } : p);
+    } else {
+      newPacks.push({ id: `login-legendary-mvp-${Date.now()}`, type: 'legendary_mvp', name: 'Legendary MVP Pack', count: 1 });
+    }
+
+    const newClaimed = Array.from(new Set([...stateRef.current.claimedAchievements, 'login_bonus']));
+    const newUnlocked = Array.from(new Set([...stateRef.current.unlockedAchievements, 'login_bonus']));
+
+    await updateGameStateAsync({
+      coins: stateRef.current.coins + 100000,
+      inventoryPacks: newPacks,
+      claimedAchievements: newClaimed,
+      unlockedAchievements: newUnlocked,
+    });
+  }, [updateGameStateAsync]);
+
   const addPackToInventory = useCallback(async (pack: { id: string; type: string; name: string }, sync: boolean = true) => {
     const existing = stateRef.current.inventoryPacks.find(p => p.type === pack.type);
     let newPacks;
@@ -813,6 +1058,9 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
       claimedDays: [],
       inventoryPacks: [],
       isPremium: false,
+      hasLifetimeNoAds: false,
+      subscriptionExpiry: null,
+      completedSbcs: [],
     };
 
     setState(newState);
@@ -917,9 +1165,10 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setShowWelcomeGift,
     login,
     logout,
+    claimLoginReward,
     startFranchise,
     updateFranchise
-  }), [state, isAuthLoading, isInitialSyncDone, isOffline, syncError, showWelcomeGift, setCoins, addCoins, spendCoins, addToCollection, addCustomCard, setCurrentView, unlockAchievement, claimReward, addPackToInventory, removePackFromInventory, setPremium, resetGame, updateGameState, forceSync, isSaving, isBackgroundSaving, login, logout, startFranchise, updateFranchise]);
+  }), [state, isAuthLoading, isInitialSyncDone, isOffline, syncError, showWelcomeGift, setCoins, addCoins, spendCoins, addToCollection, addCustomCard, setCurrentView, unlockAchievement, claimAchievementReward, claimReward, addPackToInventory, removePackFromInventory, setPremium, resetGame, updateGameState, forceSync, refreshFromCloud, isSaving, isBackgroundSaving, login, logout, claimLoginReward, startFranchise, updateFranchise]);
 
   return (
     <GameContext.Provider value={contextValue}>

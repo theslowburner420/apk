@@ -3,17 +3,20 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { useEffect, lazy, Suspense } from 'react';
+import { useEffect, useState, lazy, Suspense } from 'react';
 import { GameProvider, useGame } from './context/GameContext';
 import { NotificationProvider } from './context/NotificationContext';
 import { ALL_CARDS } from './data/cards';
-import { LayoutGrid, ShoppingBag, Zap, Trophy, Coins, User as UserIcon, Gift, X, Star, Home, AlertTriangle, RefreshCw, Loader2 } from 'lucide-react';
+import { isScreamEditionActive } from './constants/screamEdition';
+import { LogIn, LogOut, User as UserIcon, Coins, AlertCircle, ChevronDown, Settings, Cloud, Check, RefreshCw, X, Gift, Star, Home, ShoppingBag, LayoutGrid, Trophy, Zap, AlertTriangle, Loader2, Sparkles, Award } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { MemoryManager } from './lib/memory';
 import { Analytics } from "@vercel/analytics/react";
 
 import Header from './components/Header';
 import StaticAd from './components/StaticAd';
+import HalloweenEventModal from './components/HalloweenEventModal';
+import { Puzzle } from 'lucide-react';
 
 // Lazy load views for code splitting
 const HomeView = lazy(() => import('./views/HomeView'));
@@ -26,19 +29,133 @@ const ShopView = lazy(() => import('./views/ShopView'));
 const ProfileView = lazy(() => import('./views/ProfileView'));
 const TradingView = lazy(() => import('./views/TradingView'));
 const CareerView = lazy(() => import('./views/CareerView'));
+const SbcView = lazy(() => import('./views/SbcView'));
 
-// Simple View Loader
-const ViewLoader = () => (
-  <div className="h-full w-full flex items-center justify-center bg-black">
-    <div className="flex flex-col items-center gap-4">
-      <Loader2 className="w-8 h-8 text-amber-500 animate-spin" />
-      <span className="text-[10px] font-black uppercase tracking-widest text-zinc-500">Loading Module...</span>
+// High-Fidelity Immersive View Loader
+const ViewLoader = () => {
+  const loadingHints = [
+    "DRAFTING FUTURE ALL-STARS...",
+    "POLISHING PREMIUM PLAYER CARDS...",
+    "CONFIGURING GAME LINEUPS...",
+    "SYNCHRONIZING LOCKER ROOMS...",
+    "SIMULATING LEAGUE SEASONS...",
+    "GENERATING EXCLUSIVE PACKS...",
+    "PREPARING LIVE STADIUMS..."
+  ];
+  
+  // Pick a hint based on random/time index for freshness
+  const hintIndex = Math.floor((Date.now() / 1500) % loadingHints.length);
+  const hint = loadingHints[hintIndex];
+
+  return (
+    <div className="h-[70vh] w-full flex flex-col items-center justify-center bg-black relative overflow-hidden select-none">
+      {/* Dynamic Ambient Background Glows */}
+      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-64 h-64 bg-amber-500/5 blur-[80px] rounded-full pointer-events-none animate-pulse" />
+      <div className="absolute top-1/3 left-1/3 -translate-x-1/2 -translate-y-1/2 w-48 h-48 bg-zinc-800/10 blur-[60px] rounded-full pointer-events-none" />
+
+      <div className="relative z-10 flex flex-col items-center gap-6">
+        {/* Animated Badge Holder */}
+        <div className="relative">
+          <div className="w-16 h-16 bg-gradient-to-b from-zinc-850 to-zinc-950 rounded-2xl flex items-center justify-center border border-white/10 shadow-[0_0_30px_rgba(0,0,0,0.5)]">
+            <Sparkles className="w-6 h-6 text-amber-500 animate-pulse" />
+          </div>
+          {/* Scanning Line overlay */}
+          <div className="absolute inset-0 bg-gradient-to-b from-transparent via-amber-500/20 to-transparent h-1/2 w-full top-0 left-0 animate-bounce" />
+        </div>
+
+        <div className="flex flex-col items-center gap-2">
+          {/* Immersive typography & dynamic hints */}
+          <span className="text-[10px] font-black uppercase tracking-[0.25em] text-white animate-pulse">
+            {hint}
+          </span>
+          <div className="flex items-center gap-1.5 mt-1">
+            <Loader2 className="w-3 h-3 text-amber-500 animate-spin" />
+            <span className="text-[8px] font-bold text-zinc-500 uppercase tracking-widest">Initialising Component</span>
+          </div>
+        </div>
+
+        {/* Dynamic scanning bar */}
+        <div className="w-36 h-[2px] bg-zinc-900 rounded-full overflow-hidden relative">
+          <div className="absolute h-full w-12 bg-gradient-to-r from-transparent via-amber-500 to-transparent animate-[shimmer_1.5s_infinite]" 
+               style={{
+                 animation: 'shimmer 1.2s infinite linear'
+               }}
+          />
+        </div>
+      </div>
+      
+      {/* Inline styles for custom shimmer animation since Tailwind configuration is kept standard */}
+      <style>{`
+        @keyframes shimmer {
+          0% { left: -50px; }
+          100% { left: 150px; }
+        }
+      `}</style>
     </div>
-  </div>
-);
+  );
+};
 
 function AppContent() {
-  const { currentView, setCurrentView, isPremium, isAuthLoading, isInitialSyncDone, isOffline, syncError, showWelcomeGift, setShowWelcomeGift } = useGame();
+  const { currentView, setCurrentView, isPremium, isAuthLoading, isInitialSyncDone, isOffline, syncError, showWelcomeGift, setShowWelcomeGift, login, user, claimLoginReward, claimedAchievements } = useGame();
+  const [showLoginIncentive, setShowLoginIncentive] = useState(false);
+  const [hasShownLoginIncentive, setHasShownLoginIncentive] = useState(false);
+  const [showLoginBonusModal, setShowLoginBonusModal] = useState(false);
+  const [claimingLoginBonus, setClaimingLoginBonus] = useState(false);
+  const isScreamActive = isScreamEditionActive(isPremium);
+  const [isHalloweenModalOpen, setIsHalloweenModalOpen] = useState(false);
+  const [sbcInitialCategory, setSbcInitialCategory] = useState<any>('all');
+  const [spookyFogEnabled, setSpookyFogEnabled] = useState<boolean>(() => {
+    return localStorage.getItem('hoops_spooky_fog') !== 'false';
+  });
+
+  useEffect(() => {
+    const handleFogToggle = () => {
+      setSpookyFogEnabled(localStorage.getItem('hoops_spooky_fog') !== 'false');
+    };
+    window.addEventListener('hoops-fog-toggle', handleFogToggle);
+    return () => window.removeEventListener('hoops-fog-toggle', handleFogToggle);
+  }, []);
+
+  // Auto-open Halloween showcase modal on first visit of session if event is active
+  useEffect(() => {
+    if (isScreamActive) {
+      const hasSeen = sessionStorage.getItem('hoops_halloween_modal_seen');
+      if (!hasSeen) {
+        setIsHalloweenModalOpen(true);
+        sessionStorage.setItem('hoops_halloween_modal_seen', 'true');
+      }
+    }
+  }, [isScreamActive]);
+
+  // Listen for open-halloween-modal event from anywhere in the app
+  useEffect(() => {
+    const handleOpenModal = () => setIsHalloweenModalOpen(true);
+    window.addEventListener('open-halloween-modal', handleOpenModal);
+    return () => window.removeEventListener('open-halloween-modal', handleOpenModal);
+  }, []);
+
+  // Show login incentive if user is NOT logged in and hasn't seen it this session
+  useEffect(() => {
+    if (!user && isInitialSyncDone && !hasShownLoginIncentive) {
+      const timer = setTimeout(() => {
+        setShowLoginIncentive(true);
+        setHasShownLoginIncentive(true);
+      }, 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [user, isInitialSyncDone, hasShownLoginIncentive]);
+
+  // Show login bonus claim if logged in, initial sync is done, and not already claimed
+  useEffect(() => {
+    if (user && isInitialSyncDone && !showWelcomeGift && !claimedAchievements?.includes('login_bonus')) {
+      const timer = setTimeout(() => {
+        setShowLoginBonusModal(true);
+      }, 800);
+      return () => clearTimeout(timer);
+    } else {
+      setShowLoginBonusModal(false);
+    }
+  }, [user, isInitialSyncDone, showWelcomeGift, claimedAchievements]);
 
   // Adsterra Script Logic - ONLY load if NOT premium
   useEffect(() => {
@@ -50,34 +167,32 @@ function AppContent() {
     }
   }, [isPremium]);
 
-  // Tactical Image Preloading
+  // Tactical Image Preloading (Prioritized)
   useEffect(() => {
     const prefetchAssets = () => {
-      // 1. Essential UI Images (Only if they exist, or use known CDNs)
-      const uiAssets = [
-        'https://picsum.photos/seed/cards/400/600', // Placeholder for card back
+      // 1. Critical Logos & Players
+      const criticalLogos = [
+        'https://cdn.nba.com/logos/nba/1610612747/primary/L/logo.svg',
+        'https://cdn.nba.com/logos/nba/1610612744/primary/L/logo.svg',
+        'https://cdn.nba.com/logos/nba/1610612738/primary/L/logo.svg',
+        'https://cdn.nba.com/logos/nba/1610612741/primary/L/logo.svg',
       ];
       
-      // 2. Critical Team Logos (Top 10 most popular teams)
-      const criticalLogos = [
-        'https://cdn.nba.com/logos/nba/1610612747/primary/L/logo.svg', // Lakers
-        'https://cdn.nba.com/logos/nba/1610612744/primary/L/logo.svg', // Warriors
-        'https://cdn.nba.com/logos/nba/1610612738/primary/L/logo.svg', // Celtics
-        'https://cdn.nba.com/logos/nba/1610612741/primary/L/logo.svg', // Bulls
-      ];
-
-      // 3. Top Tier Players (Legends & Superstars)
-      const criticalPlayers = ALL_CARDS.slice(0, 30).map(c => c.imageUrl);
-
-      const allCritical = [...uiAssets, ...criticalLogos, ...criticalPlayers];
-
-      allCritical.forEach(url => {
-        const img = new Image();
-        img.src = url;
+      const topPlayers = ALL_CARDS.slice(0, 15).map(c => c.imageUrl);
+      
+      // Use Link preloading for highest priority
+      [...criticalLogos, ...topPlayers].forEach(url => {
+        try {
+          const link = document.createElement('link');
+          link.rel = 'preload';
+          link.as = 'image';
+          link.href = url;
+          document.head.appendChild(link);
+        } catch (e) { /* ignore */ }
       });
 
-      // 4. Background prefetch of the rest in chunks
-      const remainingCards = ALL_CARDS.slice(30, 200);
+      // 2. Background prefetch remaining essential cards
+      const remainingCards = ALL_CARDS.slice(15, 80);
       const batchSize = 10;
       for (let i = 0; i < remainingCards.length; i += batchSize) {
         setTimeout(() => {
@@ -89,14 +204,14 @@ function AppContent() {
               logo.src = card.teamLogoUrl;
             }
           });
-        }, 1000 + (i * 200)); // Start after 1s
+        }, 2500 + (i * 250));
       }
     };
     
     if ('requestIdleCallback' in window) {
-      (window as any).requestIdleCallback(prefetchAssets);
+      (window as any).requestIdleCallback(prefetchAssets, { timeout: 3000 });
     } else {
-      setTimeout(prefetchAssets, 1500);
+      setTimeout(prefetchAssets, 1200);
     }
   }, []);
 
@@ -131,6 +246,7 @@ function AppContent() {
             case 'profile': return <ProfileView />;
             case 'trading': return <TradingView />;
             case 'career': return <CareerView />;
+            case 'sbc': return <SbcView initialCategory={sbcInitialCategory} />;
             default: return <HomeView />;
           }
         })()}
@@ -209,12 +325,29 @@ function AppContent() {
     );
   }
 
+  const isSpookyAtmosphereActive = isScreamActive && spookyFogEnabled;
+
   return (
-    <div className="h-[100dvh] w-full bg-black text-white flex flex-col overflow-hidden font-sans selection:bg-amber-500 selection:text-black">
+    <div className={`h-[100dvh] w-full bg-black text-white flex flex-col font-sans selection:bg-amber-500 selection:text-black relative overflow-hidden ${
+      isSpookyAtmosphereActive ? 'spooky-theme' : ''
+    }`}>
+      {/* Spooky Atmospheric Fog & Vignette Overlay */}
+      {isSpookyAtmosphereActive && (
+        <>
+          <div className="spooky-fog-layer" aria-hidden="true" />
+          <div className="spooky-vignette fixed inset-0 pointer-events-none z-[2]" aria-hidden="true" />
+        </>
+      )}
+
+      {/* Premium Texture Overlay */}
+      <div className="absolute inset-0 pointer-events-none opacity-[0.02] z-[10000] mix-blend-overlay bg-repeat" 
+           style={{ backgroundImage: 'url("data:image/svg+xml,%3Csvg viewBox=\'0 0 200 200\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Cfilter id=\'noiseFilter\'%3E%3CfeTurbulence type=\'fractalNoise\' baseFrequency=\'0.65\' numOctaves=\'3\' stitchTiles=\'stitch\'/%3E%3C/filter%3E%3Crect width=\'100%25\' height=\'100%25\' filter=\'url(%23noiseFilter)\'/%3E%3C/svg%3E")' }} />
+      
       {/* Offline Warning */}
       <AnimatePresence>
         {isOffline && (
           <motion.div
+            key="offline-warning"
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: 'auto', opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
@@ -226,9 +359,9 @@ function AppContent() {
         )}
       </AnimatePresence>
 
-      {/* Header Area - Fixed at top to prevent layout shifts */}
+      {/* Header Area */}
       {!(currentView === 'draft' || currentView === 'open') && (
-        <div className="fixed top-0 left-0 right-0 z-[5000] flex flex-col bg-black">
+        <div className="relative z-[9000] flex flex-col bg-black shrink-0">
           {/* Top Ad Area */}
           <StaticAd position="header" />
           
@@ -237,8 +370,10 @@ function AppContent() {
         </div>
       )}
       
-      {/* Main Content Area - This grows to fill space and its children handle scrolling */}
-      <main className={`flex-1 relative bg-black overflow-hidden ${(currentView === 'draft' || currentView === 'open') ? 'pt-0 pb-0' : (isPremium ? 'pt-14 pb-16' : 'pt-[116px] pb-16')}`}>
+      {/* Content Area - Natural Scroll */}
+      <main className={`flex-1 relative bg-black overflow-x-hidden custom-scrollbar ${
+        (currentView === 'career' || currentView === 'draft') ? 'overflow-hidden' : 'overflow-y-auto'
+      }`}>
         <AnimatePresence mode="wait">
           <motion.div
             key={currentView}
@@ -246,7 +381,7 @@ function AppContent() {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -10 }}
             transition={{ duration: 0.15, ease: "easeOut" }}
-            className="h-full w-full overflow-hidden"
+            className={`w-full ${(currentView === 'career' || currentView === 'draft') ? 'h-full flex flex-col' : ''}`}
           >
             {renderView()}
           </motion.div>
@@ -254,138 +389,222 @@ function AppContent() {
       </main>
 
       {/* Global Navigation Bar */}
-      {!(currentView === 'draft' || currentView === 'open') && (
-        <div className="fixed bottom-0 left-0 right-0 z-[4000] flex flex-col bg-black">
-          {/* Global Navigation Bar */}
-          <nav className="h-16 bg-zinc-950 border-t border-zinc-900 flex items-center justify-around px-2 pb-safe shrink-0">
+      {!(currentView === 'draft' || currentView === 'open' || currentView === 'career') && (
+        <div className="z-[4000] flex flex-col bg-black shrink-0">
+          <nav className="h-11 bg-zinc-950/95 backdrop-blur-md border-t border-white/10 flex items-center justify-around px-3 pb-safe shrink-0">
             {/* Collection */}
             <button 
               onClick={() => handleViewChange('collection')}
-              className={`flex-1 flex flex-col items-center justify-center gap-1 transition-all duration-300 ${currentView === 'collection' ? 'text-white' : 'text-zinc-600'}`}
+              className={`flex-1 flex flex-col items-center justify-center gap-0.5 py-1 transition-colors ${
+                currentView === 'collection' ? 'text-amber-400 font-bold' : 'text-zinc-500 hover:text-zinc-300'
+              }`}
             >
-              <div className={`p-1.5 rounded-lg transition-all ${currentView === 'collection' ? 'bg-zinc-900' : ''}`}>
-                <LayoutGrid size={20} strokeWidth={currentView === 'collection' ? 2.5 : 2} />
-              </div>
-              <span className="text-[8px] font-black uppercase tracking-wider">Roster</span>
+              <LayoutGrid size={16} strokeWidth={currentView === 'collection' ? 2.2 : 1.8} />
+              <span className="text-[8px] uppercase tracking-wider">Roster</span>
             </button>
-  
+
             {/* Rewards */}
             <button 
               onClick={() => handleViewChange('rewards')}
-              className={`flex-1 flex flex-col items-center justify-center gap-1 transition-all duration-300 ${currentView === 'rewards' ? 'text-white' : 'text-zinc-600'}`}
+              className={`flex-1 flex flex-col items-center justify-center gap-0.5 py-1 transition-colors ${
+                currentView === 'rewards' ? 'text-amber-400 font-bold' : 'text-zinc-500 hover:text-zinc-300'
+              }`}
             >
-              <div className={`p-1.5 rounded-lg transition-all ${currentView === 'rewards' ? 'bg-zinc-900' : ''}`}>
-                <Trophy size={20} strokeWidth={currentView === 'rewards' ? 2.5 : 2} />
-              </div>
-              <span className="text-[8px] font-black uppercase tracking-wider">Rewards</span>
+              <Trophy size={16} strokeWidth={currentView === 'rewards' ? 2.2 : 1.8} />
+              <span className="text-[8px] uppercase tracking-wider">Rewards</span>
             </button>
   
             {/* HOME (Center) */}
             <button 
               onClick={() => handleViewChange('home')}
-              className={`flex-1 relative flex flex-col items-center justify-center transition-all duration-500 ${currentView === 'home' || currentView === 'open' || currentView === 'draft' ? 'scale-110 -translate-y-1' : ''}`}
+              onMouseEnter={() => {
+                const homeAssets = ALL_CARDS.slice(0, 5).map(c => c.imageUrl);
+                homeAssets.forEach(url => { const img = new Image(); img.src = url; });
+              }}
+              className={`flex-1 flex flex-col items-center justify-center gap-0.5 py-1 transition-colors ${
+                currentView === 'home' || currentView === 'open' || currentView === 'draft' ? 'text-amber-400 font-bold' : 'text-zinc-500 hover:text-zinc-300'
+              }`}
             >
-              <div className={`p-2.5 rounded-xl transition-all ${currentView === 'home' || currentView === 'open' || currentView === 'draft' ? 'bg-amber-500 text-black shadow-[0_0_20px_rgba(245,158,11,0.4)]' : 'bg-zinc-900 text-zinc-500'}`}>
-                <Home size={24} strokeWidth={3} fill={currentView === 'home' || currentView === 'open' || currentView === 'draft' ? "currentColor" : "none"} />
-              </div>
-              <span className={`text-[9px] font-black uppercase tracking-[0.1em] mt-1 transition-colors ${currentView === 'home' || currentView === 'open' || currentView === 'draft' ? 'text-amber-500' : 'text-zinc-600'}`}>Home</span>
+              <Home size={16} strokeWidth={currentView === 'home' || currentView === 'open' || currentView === 'draft' ? 2.2 : 1.8} />
+              <span className="text-[8px] uppercase tracking-wider">Home</span>
             </button>
   
             {/* Packs */}
             <button 
               onClick={() => handleViewChange('packs')}
-              className={`flex-1 flex flex-col items-center justify-center gap-1 transition-all duration-300 ${currentView === 'packs' ? 'text-white' : 'text-zinc-600'}`}
+              className={`flex-1 flex flex-col items-center justify-center gap-0.5 py-1 transition-colors ${
+                currentView === 'packs' ? 'text-amber-400 font-bold' : 'text-zinc-500 hover:text-zinc-300'
+              }`}
             >
-              <div className={`p-1.5 rounded-lg transition-all ${currentView === 'packs' ? 'bg-zinc-900' : ''}`}>
-                <ShoppingBag size={20} strokeWidth={currentView === 'packs' ? 2.5 : 2} />
-              </div>
-              <span className="text-[8px] font-black uppercase tracking-wider">Packs</span>
+              <ShoppingBag size={16} strokeWidth={currentView === 'packs' ? 2.2 : 1.8} />
+              <span className="text-[8px] uppercase tracking-wider">Packs</span>
             </button>
-  
+
             {/* Shop */}
             <button 
               onClick={() => handleViewChange('shop')}
-              className={`flex-1 flex flex-col items-center justify-center gap-1 transition-all duration-300 ${currentView === 'shop' ? 'text-white' : 'text-zinc-600'}`}
+              className={`flex-1 flex flex-col items-center justify-center gap-0.5 py-1 transition-colors ${
+                currentView === 'shop' ? 'text-amber-400 font-bold' : 'text-zinc-500 hover:text-zinc-300'
+              }`}
             >
-              <div className={`p-1.5 rounded-lg transition-all ${currentView === 'shop' ? 'bg-zinc-900' : ''}`}>
-                <Coins size={20} strokeWidth={currentView === 'shop' ? 2.5 : 2} />
-              </div>
-              <span className="text-[8px] font-black uppercase tracking-wider">Shop</span>
+              <Coins size={16} strokeWidth={currentView === 'shop' ? 2.2 : 1.8} />
+              <span className="text-[8px] uppercase tracking-wider">Shop</span>
             </button>
           </nav>
         </div>
       )}
 
-      {/* Welcome Gift Modal */}
+      {/* Welcome Gift & Auth Modals */}
       <AnimatePresence>
+        {showLoginIncentive && !user && (
+          <motion.div
+            key="login-incentive-backdrop"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[10000] bg-black/80 backdrop-blur-md flex items-center justify-center p-6"
+          >
+            <motion.div
+              key="login-incentive-content"
+              initial={{ scale: 0.9, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              className="w-full max-w-sm bg-zinc-900 border border-white/10 rounded-3xl p-6 md:p-8 relative overflow-hidden shadow-2xl"
+            >
+              <div className="relative z-10 flex flex-col items-center text-center">
+                <div className="w-16 h-16 bg-white rounded-2xl flex items-center justify-center shadow-xl mb-6">
+                  <LogIn size={32} className="text-black" />
+                </div>
+                
+                <h2 className="text-2xl font-black italic uppercase tracking-tighter text-white mb-2 leading-none">
+                  Save Your Progress
+                </h2>
+                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-amber-500 mb-6">
+                  Login for Exclusive Rewards
+                </p>
+                
+                <div className="space-y-3 w-full mb-8">
+                  <div className="bg-black/40 border border-white/5 rounded-2xl p-4 flex items-center gap-4">
+                    <div className="w-8 h-8 rounded-lg bg-green-500/10 flex items-center justify-center text-green-500">
+                      <Cloud size={16} />
+                    </div>
+                    <div className="text-left">
+                      <p className="text-[10px] font-black uppercase tracking-widest text-white">Cloud Sync</p>
+                      <p className="text-[8px] font-bold text-zinc-500 uppercase tracking-widest">Never lose your collection</p>
+                    </div>
+                  </div>
+
+                  <div className="bg-black/40 border border-white/5 rounded-2xl p-4 flex items-center gap-4">
+                    <div className="w-8 h-8 rounded-lg bg-amber-500/10 flex items-center justify-center text-amber-500">
+                      <Gift size={16} />
+                    </div>
+                    <div className="text-left">
+                      <p className="text-[10px] font-black uppercase tracking-widest text-white">Login Bonus</p>
+                      <p className="text-[8px] font-bold text-zinc-500 uppercase tracking-widest">+100,000 Coins & HOF/Legendary Packs</p>
+                    </div>
+                  </div>
+                </div>
+                
+                <button
+                  onClick={() => {
+                    login();
+                    setShowLoginIncentive(false);
+                  }}
+                  className="w-full bg-white text-black py-2.5 rounded-xl font-bold uppercase tracking-widest text-[10px] hover:bg-amber-400 active:scale-95 transition-all shadow-lg mb-3"
+                >
+                  Login with Google
+                </button>
+                
+                <button
+                  onClick={() => setShowLoginIncentive(false)}
+                  className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest hover:text-white transition-colors"
+                >
+                  Maybe Later
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+
         {showWelcomeGift && (
           <motion.div
+            key="welcome-gift-backdrop"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             className="fixed inset-0 z-[10000] bg-black/90 backdrop-blur-xl flex items-center justify-center p-6"
           >
             <motion.div
+              key="welcome-gift-content"
               initial={{ scale: 0.9, y: 20 }}
               animate={{ scale: 1, y: 0 }}
-              className="w-full max-w-sm bg-zinc-900 border border-amber-500/30 rounded-3xl p-8 relative overflow-hidden shadow-[0_0_50px_rgba(245,158,11,0.2)]"
+              className="w-full max-w-sm bg-zinc-900 border border-amber-500/30 rounded-3xl p-6 md:p-8 relative overflow-y-auto max-h-[90vh] shadow-[0_0_50px_rgba(245,158,11,0.2)]"
             >
               {/* Background Glow */}
               <div className="absolute top-0 left-1/2 -translate-x-1/2 w-32 h-32 bg-amber-500/20 blur-[60px] rounded-full" />
               
               <div className="relative z-10 flex flex-col items-center text-center">
-                <div className="w-20 h-20 bg-amber-500 rounded-2xl flex items-center justify-center shadow-[0_0_30px_rgba(245,158,11,0.4)] mb-6">
-                  <Gift size={40} className="text-black" />
+                <div className="w-16 h-16 md:w-20 md:h-20 bg-amber-500 rounded-2xl flex items-center justify-center shadow-[0_0_30px_rgba(245,158,11,0.4)] mb-4 md:mb-6">
+                  <Gift size={32} className="text-black md:w-10 md:h-10" />
                 </div>
                 
-                <h2 className="text-3xl font-black italic uppercase tracking-tighter text-white mb-2 leading-none">
+                <h2 className="text-2xl md:text-3xl font-black italic uppercase tracking-tighter text-white mb-1 md:mb-2 leading-none">
                   Welcome!
                 </h2>
-                <p className="text-[10px] font-black uppercase tracking-[0.3em] text-amber-500 mb-6">
-                  Exclusive Starter Pack
+                <p className="text-[8px] md:text-[10px] font-black uppercase tracking-[0.2em] md:tracking-[0.3em] text-amber-500 mb-4 md:mb-6">
+                  Exclusive Starter Package
                 </p>
                 
-                <div className="space-y-3 w-full mb-8">
-                  <div className="bg-black/40 border border-white/5 rounded-2xl p-4 flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-lg bg-amber-500/10 flex items-center justify-center text-amber-500">
-                        <Coins size={16} />
+                <div className="space-y-2 md:space-y-3 w-full mb-6 md:mb-8">
+                  <div className="bg-black/40 border border-white/5 rounded-xl md:rounded-2xl p-3 md:p-4 flex items-center justify-between">
+                    <div className="flex items-center gap-2 md:gap-3">
+                      <div className="w-7 h-7 md:w-8 md:h-8 rounded-lg bg-amber-500/10 flex items-center justify-center text-amber-500">
+                        <Coins size={14} className="md:w-4 md:h-4" />
                       </div>
-                      <span className="text-sm font-black uppercase tracking-widest text-zinc-400">Coins</span>
+                      <span className="text-xs md:text-sm font-black uppercase tracking-widest text-zinc-400">Coins</span>
                     </div>
-                    <span className="text-xl font-black italic text-white">+100,000</span>
+                    <span className="text-lg md:text-xl font-black italic text-white">+150,000</span>
                   </div>
 
-                  <div className="bg-black/40 border border-white/5 rounded-2xl p-4 flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-lg bg-indigo-500/10 flex items-center justify-center text-indigo-500">
-                        <ShoppingBag size={16} />
+                  <div className="bg-black/40 border border-white/5 rounded-xl md:rounded-2xl p-3 md:p-4 flex items-center justify-between">
+                    <div className="flex items-center gap-2 md:gap-3">
+                      <div className="w-7 h-7 md:w-8 md:h-8 rounded-lg bg-indigo-500/10 flex items-center justify-center text-indigo-500">
+                        <ShoppingBag size={14} className="md:w-4 md:h-4" />
                       </div>
-                      <span className="text-sm font-black uppercase tracking-widest text-zinc-400">Welcome Mega</span>
+                      <span className="text-xs md:text-sm font-black uppercase tracking-widest text-zinc-400">Finals MVP Packs</span>
                     </div>
-                    <span className="text-xl font-black italic text-white">x5</span>
+                    <span className="text-lg md:text-xl font-black italic text-white">x5</span>
                   </div>
                   
-                  <div className="bg-black/40 border border-white/5 rounded-2xl p-4 flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-lg bg-purple-500/10 flex items-center justify-center text-purple-500">
-                        <Star size={16} />
+                  <div className="bg-black/40 border border-white/5 rounded-xl md:rounded-2xl p-3 md:p-4 flex items-center justify-between">
+                    <div className="flex items-center gap-2 md:gap-3">
+                      <div className="w-7 h-7 md:w-8 md:h-8 rounded-lg bg-purple-500/10 flex items-center justify-center text-purple-500">
+                        <Star size={14} className="md:w-4 md:h-4" />
                       </div>
-                      <span className="text-sm font-black uppercase tracking-widest text-zinc-400">MVP Packs</span>
+                      <span className="text-xs md:text-sm font-black uppercase tracking-widest text-zinc-400">HOF Packs</span>
                     </div>
-                    <span className="text-xl font-black italic text-white">x3</span>
+                    <span className="text-lg md:text-xl font-black italic text-white">x3</span>
+                  </div>
+
+                  <div className="bg-black/40 border border-white/5 rounded-xl md:rounded-2xl p-3 md:p-4 flex items-center justify-between">
+                    <div className="flex items-center gap-2 md:gap-3">
+                      <div className="w-7 h-7 md:w-8 md:h-8 rounded-lg bg-amber-500/10 flex items-center justify-center text-amber-500">
+                        <Award size={14} className="md:w-4 md:h-4" />
+                      </div>
+                      <span className="text-xs md:text-sm font-black uppercase tracking-widest text-zinc-400">Legendary Pack</span>
+                    </div>
+                    <span className="text-lg md:text-xl font-black italic text-white">x1</span>
                   </div>
                 </div>
                 
-                <p className="text-[9px] text-zinc-500 uppercase font-bold tracking-widest leading-relaxed mb-8 max-w-[240px]">
-                  Here is your gift: 100,000 coins, 5 Welcome Mega Packs and 3 MVP Packs to start your collection.
+                <p className="text-[8px] md:text-[9px] text-zinc-500 uppercase font-bold tracking-widest leading-relaxed mb-6 md:mb-8 max-w-[240px]">
+                  Here is your starter package. <span className="text-amber-500 font-extrabold">Sign in with Google to claim your 100,000 Coins & 2 HOF + 1 Legendary MVP Pack sign-in reward!</span>
                 </p>
                 
                 <button
                   onClick={() => setShowWelcomeGift(false)}
-                  className="w-full bg-white text-black py-4 rounded-2xl font-black uppercase tracking-widest text-xs hover:bg-amber-400 active:scale-95 transition-all shadow-xl"
+                  className="w-full bg-white text-black py-3 md:py-4 rounded-xl md:rounded-2xl font-black uppercase tracking-widest text-[10px] md:text-xs hover:bg-amber-400 active:scale-95 transition-all shadow-xl"
                 >
-                  Claim Rewards
+                  Claim Starter Package
                 </button>
               </div>
               
@@ -398,6 +617,115 @@ function AppContent() {
               </button>
             </motion.div>
           </motion.div>
+        )}
+
+        {showLoginBonusModal && (
+          <motion.div
+            key="login-bonus-backdrop"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[10000] bg-black/90 backdrop-blur-xl flex items-center justify-center p-6"
+          >
+            <motion.div
+              key="login-bonus-content"
+              initial={{ scale: 0.9, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              className="w-full max-w-sm bg-zinc-900 border border-amber-500/30 rounded-3xl p-6 md:p-8 relative overflow-y-auto max-h-[90vh] shadow-[0_0_50px_rgba(245,158,11,0.3)]"
+            >
+              {/* Background Glow */}
+              <div className="absolute top-0 left-1/2 -translate-x-1/2 w-32 h-32 bg-amber-500/20 blur-[60px] rounded-full animate-pulse" />
+              
+              <div className="relative z-10 flex flex-col items-center text-center">
+                <div className="w-16 h-16 md:w-20 md:h-20 bg-gradient-to-br from-amber-400 to-amber-600 rounded-2xl flex items-center justify-center shadow-[0_0_30px_rgba(245,158,11,0.5)] mb-4 md:mb-6">
+                  <Sparkles size={32} className="text-black md:w-10 md:h-10 animate-bounce" />
+                </div>
+                
+                <h2 className="text-2xl md:text-3xl font-black italic uppercase tracking-tighter text-white mb-1 md:mb-2 leading-none">
+                  SIGN-IN BONUS!
+                </h2>
+                <p className="text-[8px] md:text-[10px] font-black uppercase tracking-[0.2em] md:tracking-[0.3em] text-amber-500 mb-4 md:mb-6">
+                  Google Account Reward
+                </p>
+                
+                <div className="space-y-2 md:space-y-3 w-full mb-6 md:mb-8">
+                  <div className="bg-black/40 border border-white/5 rounded-xl md:rounded-2xl p-3 md:p-4 flex items-center justify-between">
+                    <div className="flex items-center gap-2 md:gap-3">
+                      <div className="w-7 h-7 md:w-8 md:h-8 rounded-lg bg-amber-500/10 flex items-center justify-center text-amber-500">
+                        <Coins size={14} className="md:w-4 md:h-4" />
+                      </div>
+                      <span className="text-xs md:text-sm font-black uppercase tracking-widest text-zinc-400">Bonus Coins</span>
+                    </div>
+                    <span className="text-lg md:text-xl font-black italic text-amber-400">+100,000</span>
+                  </div>
+
+                  <div className="bg-black/40 border border-white/5 rounded-xl md:rounded-2xl p-3 md:p-4 flex items-center justify-between">
+                    <div className="flex items-center gap-2 md:gap-3">
+                      <div className="w-7 h-7 md:w-8 md:h-8 rounded-lg bg-purple-500/10 flex items-center justify-center text-purple-500">
+                        <Star size={14} className="md:w-4 md:h-4" />
+                      </div>
+                      <span className="text-xs md:text-sm font-black uppercase tracking-widest text-zinc-400">HOF Packs</span>
+                    </div>
+                    <span className="text-lg md:text-xl font-black italic text-white">x2</span>
+                  </div>
+
+                  <div className="bg-black/40 border border-white/5 rounded-xl md:rounded-2xl p-3 md:p-4 flex items-center justify-between">
+                    <div className="flex items-center gap-2 md:gap-3">
+                      <div className="w-7 h-7 md:w-8 md:h-8 rounded-lg bg-indigo-500/10 flex items-center justify-center text-indigo-500">
+                        <Award size={14} className="md:w-4 md:h-4" />
+                      </div>
+                      <span className="text-xs md:text-sm font-black uppercase tracking-widest text-zinc-400">Legendary Pack</span>
+                    </div>
+                    <span className="text-lg md:text-xl font-black italic text-white">x1</span>
+                  </div>
+                </div>
+                
+                <p className="text-[8px] md:text-[9px] text-zinc-500 uppercase font-bold tracking-widest leading-relaxed mb-6 md:mb-8 max-w-[240px]">
+                  Thank you for securing your progress. These elite rewards have been added directly to your account.
+                </p>
+                
+                <button
+                  disabled={claimingLoginBonus}
+                  onClick={async () => {
+                    setClaimingLoginBonus(true);
+                    try {
+                      await claimLoginReward();
+                      setShowLoginBonusModal(false);
+                    } catch (err) {
+                      console.error("Error claiming login bonus", err);
+                    } finally {
+                      setClaimingLoginBonus(false);
+                    }
+                  }}
+                  className="w-full bg-amber-500 text-black py-3 md:py-4 rounded-xl md:rounded-2xl font-black uppercase tracking-widest text-[10px] md:text-xs hover:bg-amber-400 active:scale-95 transition-all shadow-xl flex items-center justify-center gap-2"
+                >
+                  {claimingLoginBonus ? (
+                    <>
+                      <Loader2 size={16} className="animate-spin" />
+                      Claiming...
+                    </>
+                  ) : (
+                    "Claim Sign-In Bonus"
+                  )}
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+
+        {/* Halloween Scream Event Showcase Modal */}
+        {isHalloweenModalOpen && (
+          <HalloweenEventModal
+            key="halloween-event-modal"
+            isOpen={isHalloweenModalOpen}
+            onClose={() => setIsHalloweenModalOpen(false)}
+            onNavigateToPacks={() => setCurrentView('packs')}
+            onNavigateToSBC={() => {
+              setSbcInitialCategory('scream');
+              setCurrentView('sbc');
+            }}
+            onNavigateToDraft={() => setCurrentView('draft')}
+          />
         )}
       </AnimatePresence>
       <Analytics />

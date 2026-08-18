@@ -4,84 +4,329 @@ import { ALL_CARDS, CARDS_BY_RARITY, CARDS_BY_SERIES } from '../data/cards';
 import { Card, Rarity } from '../types';
 import { ACHIEVEMENTS } from '../constants/achievements';
 
-export type PackType = 'random' | 'rookie' | 'allstar' | 'mvp' | 'hof' | 'legendary_mvp' | 'rising_star';
+export type PackType = 
+  | 'rookie'
+  | 'starter'
+  | 'allstar' 
+  | 'allnba'
+  | 'mvp' 
+  | 'hof' 
+  | 'legendary_mvp'
+  | 'scream_edition'
+  | 'scream'
+  | 'random' 
+  | 'duo_xfactor'
+  | 'dynasty'
+  | 'gold'
+  | 'franchise'
+  | 'galaxy'
+  | 'invincible'
+  | 'draft2026';
 
-export const DROP_RATES: Record<PackType, { rarity: Rarity; rate: number }[]> = {
-  random: [
-    { rarity: 'bench', rate: 70 },
-    { rarity: 'starter', rate: 18 },
-    { rarity: 'allstar', rate: 5 },
-    { rarity: 'franchise', rate: 1.5 },
-    { rarity: 'legend', rate: 0.5 },
-    { rarity: 'roty', rate: 0.5 },
-    { rarity: 'coach', rate: 5 },
-  ],
-  rookie: [
-    { rarity: 'bench', rate: 55 },
-    { rarity: 'starter', rate: 25 },
-    { rarity: 'allstar', rate: 10 },
-    { rarity: 'franchise', rate: 4 },
-    { rarity: 'legend', rate: 1 },
-    { rarity: 'roty', rate: 1 },
-    { rarity: 'coach', rate: 5 },
-  ],
-  allstar: [
-    { rarity: 'bench', rate: 35 },
-    { rarity: 'starter', rate: 35 },
-    { rarity: 'allstar', rate: 15 },
-    { rarity: 'franchise', rate: 8 },
-    { rarity: 'legend', rate: 2 },
-    { rarity: 'roty', rate: 2 },
-    { rarity: 'coach', rate: 5 },
-  ],
-  mvp: [
-    { rarity: 'bench', rate: 15 },
-    { rarity: 'starter', rate: 40 },
-    { rarity: 'allstar', rate: 25 },
-    { rarity: 'franchise', rate: 12 },
-    { rarity: 'legend', rate: 3 },
-    { rarity: 'roty', rate: 3 },
-    { rarity: 'coach', rate: 5 },
-  ],
-  hof: [
-    { rarity: 'bench', rate: 5 },
-    { rarity: 'starter', rate: 10 },
-    { rarity: 'allstar', rate: 40 },
-    { rarity: 'franchise', rate: 30 },
-    { rarity: 'legend', rate: 10 },
-    { rarity: 'roty', rate: 10 },
-    { rarity: 'coach', rate: 5 },
-  ],
-  legendary_mvp: [
-    { rarity: 'legend', rate: 100 },
-  ],
-  rising_star: [
-    { rarity: 'rising_star', rate: 100 },
-  ],
-};
-
-const PACK_SIZES: Record<PackType, number> = {
-  random: 5,
-  rookie: 3,
-  allstar: 4,
+export const PACK_SIZES: Record<PackType, number> = {
+  rookie: 4,
+  starter: 4,
+  allstar: 5,
+  allnba: 5,
   mvp: 5,
-  hof: 3,
+  hof: 5,
   legendary_mvp: 1,
-  rising_star: 4,
+  scream_edition: 5,
+  scream: 5,
+  random: 4,
+  duo_xfactor: 4,
+  dynasty: 5,
+  gold: 4,
+  franchise: 4,
+  galaxy: 3,
+  invincible: 1,
+  draft2026: 4,
 };
 
-export const PACK_PRICES: Record<Exclude<PackType, 'random'>, number> = {
-  rookie: 1000,
-  allstar: 5000,
-  mvp: 25000,
-  hof: 100000,
-  legendary_mvp: 250000,
-  rising_star: 50000,
+export const PACK_PRICES: Record<string, number> = {
+  rookie: 5000,
+  starter: 15000,
+  allstar: 35000,
+  allnba: 75000,
+  mvp: 130000,
+  hof: 195000,
+  legendary_mvp: 280000,
+  scream_edition: 160000,
+  scream: 160000,
+  random: 5000,
+  duo_xfactor: 15000,
+  franchise: 75000,
+  dynasty: 130000,
 };
 
-// Pre-calculate pools for series-specific packs
-const LEGENDARY_MVP_POOL = ALL_CARDS.filter(c => c.series === 'Legendary MVP Series');
-const RISING_STAR_POOL = ALL_CARDS.filter(c => c.rarity === 'rising_star');
+// Pre-calculate structured pools for thematic pack generation
+// Strict Base pools (regular season cards, NOT award/MVP promos)
+const BASE_BENCH_POOL = ALL_CARDS.filter(c => c.rarity === 'bench' && c.category === 'Base');
+const BASE_STARTER_POOL = ALL_CARDS.filter(c => c.rarity === 'starter' && c.category === 'Base');
+const BASE_ALLSTAR_POOL = ALL_CARDS.filter(c => c.rarity === 'allstar' && c.category === 'Base');
+const BASE_FRANCHISE_POOL = ALL_CARDS.filter(c => c.rarity === 'franchise' && c.category === 'Base');
+const ALLNBA_POOL = ALL_CARDS.filter(c => c.category === 'All-NBA 1st Team' || c.rarity === 'allnba_1st');
+const COMBINED_FRANCHISE_ALLNBA = [...BASE_FRANCHISE_POOL, ...ALLNBA_POOL];
+
+// Special Pools
+const DUO_POOL = ALL_CARDS.filter(c => c.category === 'Duo' || c.series === 'Dynamic Duo Series');
+const XFACTOR_POOL = ALL_CARDS.filter(c => c.category === 'X-Factor' || c.series === 'X-Factor Series');
+const AWARD_POOL = ALL_CARDS.filter(c => 
+  c.category === 'Finals MVP' || 
+  c.category === 'MVP' || 
+  c.category === 'All-Star MVP' || 
+  c.category === 'Award' || 
+  ['mvp', 'fmvp', 'dpoy', 'roty', '6moy', 'mip', 'scoring_champ'].includes(c.rarity)
+);
+
+// The 5 Dynasty cards available in packs (Showtime Lakers, 3-Peat Lakers, Spurs Dynasty, Big 3 Heat, Bad Boys Pistons)
+const DYNASTY_PACK_POOL = ALL_CARDS.filter(c => (c.category === 'Dynasty' || c.series === 'Dynasty Series' || c.id.startsWith('dynasty-')) && !c.isSpecialSBC);
+
+const LEGEND_POOL = ALL_CARDS.filter(c => c.rarity === 'legend' || (c.category === 'Dynasty' && !c.isSpecialSBC));
+const HOF_POOL = ALL_CARDS.filter(c => c.rarity === 'hof' || c.category === 'Hall of Fame' || c.series === 'Hall of Fame' || (c.category as string) === 'HOF');
+const DRAFT2026_POOL = ALL_CARDS.filter(c => c.rarity === 'draft2026' || c.category === 'Draft 2026');
+const ULTRA_RARE_POOL = ALL_CARDS.filter(c => ['invincible', 'galaxy'].includes(c.rarity) || (c.category === 'Dynasty' && !c.isSpecialSBC && (c.stats?.ovr || 0) >= 97));
+const SCREAM_PACK_POOL = ALL_CARDS.filter(c => (c.series === 'Scream Edition' || c.category === 'Scream Edition' || c.id.startsWith('scream-')) && !c.isSpecialSBC);
+
+// Full MVP pool: Regular Season MVP, Finals MVP, and All-Star MVP cards
+const ALL_MVPS_POOL = ALL_CARDS.filter(c => 
+  c.category === 'Finals MVP' || 
+  c.category === 'MVP' || 
+  c.category === 'All-Star MVP' || 
+  c.rarity === 'mvp' || 
+  c.rarity === 'fmvp' || 
+  c.series === 'Finals MVP Series' || 
+  c.series === 'MVP Series' || 
+  c.series === 'All-Star MVP Series' || 
+  (c.category === 'Award' && c.name.toLowerCase().includes('mvp'))
+);
+
+// Helper function to pick a random card from a pool excluding already drawn cards in this pack
+function getRandomFromPool(pool: Card[], excludeIds?: Set<string>): Card {
+  if (!pool || pool.length === 0) pool = BASE_BENCH_POOL.length ? BASE_BENCH_POOL : ALL_CARDS;
+  if (excludeIds && excludeIds.size > 0) {
+    const available = pool.filter(c => !excludeIds.has(c.id));
+    if (available.length > 0) {
+      return available[Math.floor(Math.random() * available.length)];
+    }
+  }
+  return pool[Math.floor(Math.random() * pool.length)];
+}
+
+// Helper to pick based on weighted probability
+function rollWeightedPool(rates: { pool: Card[]; rate: number }[], excludeIds?: Set<string>): Card {
+  const rand = Math.random() * 100;
+  let cumulative = 0;
+  for (const item of rates) {
+    cumulative += item.rate;
+    if (rand <= cumulative) {
+      return getRandomFromPool(item.pool, excludeIds);
+    }
+  }
+  return getRandomFromPool(BASE_BENCH_POOL, excludeIds);
+}
+
+// Generate pack cards with progressive rarity & guaranteed cascading floor drop rates
+export function generatePackCards(packType: PackType): Card[] {
+  const size = PACK_SIZES[packType] || 4;
+  const cards: Card[] = [];
+  const drawnIds = new Set<string>();
+
+  for (let slot = 0; slot < size; slot++) {
+    const isWalkoutSlot = slot === size - 1;
+    let card: Card;
+
+    if (packType === 'legendary_mvp') {
+      // 100% Guaranteed MVP card (Finals MVP, Regular Season MVP, or All-Star MVP)
+      const pool = ALL_MVPS_POOL.length > 0 ? ALL_MVPS_POOL : AWARD_POOL;
+      card = getRandomFromPool(pool, drawnIds);
+    } else if (packType === 'rookie' || packType === 'random') {
+      // Rookie Pack: Majority Base Bench (<80 OVR), sharply decreasing odds for higher Base tiers
+      if (isWalkoutSlot) {
+        card = rollWeightedPool([
+          { pool: BASE_BENCH_POOL, rate: 72.0 },
+          { pool: BASE_STARTER_POOL, rate: 25.0 },
+          { pool: BASE_ALLSTAR_POOL, rate: 2.8 },
+          { pool: BASE_FRANCHISE_POOL, rate: 0.18 },
+          { pool: AWARD_POOL, rate: 0.018 },
+          { pool: HOF_POOL.length ? HOF_POOL : LEGEND_POOL, rate: 0.002 },
+        ], drawnIds);
+      } else {
+        card = rollWeightedPool([
+          { pool: BASE_BENCH_POOL, rate: 88.0 },
+          { pool: BASE_STARTER_POOL, rate: 11.0 },
+          { pool: BASE_ALLSTAR_POOL, rate: 0.95 },
+          { pool: BASE_FRANCHISE_POOL, rate: 0.045 },
+          { pool: AWARD_POOL, rate: 0.004 },
+          { pool: HOF_POOL.length ? HOF_POOL : LEGEND_POOL, rate: 0.001 },
+        ], drawnIds);
+      }
+    } else if (packType === 'starter' || packType === 'duo_xfactor' || packType === 'gold') {
+      // Starter Pack: High chance of Base Starter cards (80-84 OVR), Bench floor
+      if (isWalkoutSlot) {
+        card = rollWeightedPool([
+          { pool: BASE_STARTER_POOL, rate: 75.0 },
+          { pool: BASE_BENCH_POOL, rate: 15.0 },
+          { pool: BASE_ALLSTAR_POOL, rate: 9.0 },
+          { pool: BASE_FRANCHISE_POOL, rate: 0.9 },
+          { pool: AWARD_POOL, rate: 0.08 },
+          { pool: HOF_POOL.length ? HOF_POOL : LEGEND_POOL, rate: 0.02 },
+        ], drawnIds);
+      } else {
+        card = rollWeightedPool([
+          { pool: BASE_STARTER_POOL, rate: 55.0 },
+          { pool: BASE_BENCH_POOL, rate: 40.0 },
+          { pool: BASE_ALLSTAR_POOL, rate: 4.5 },
+          { pool: BASE_FRANCHISE_POOL, rate: 0.45 },
+          { pool: AWARD_POOL, rate: 0.04 },
+          { pool: HOF_POOL.length ? HOF_POOL : LEGEND_POOL, rate: 0.01 },
+        ], drawnIds);
+      }
+    } else if (packType === 'allstar') {
+      // All-Star Pack: High chance of Base All-Star (85-89), Base Starters practically guaranteed as base floor
+      if (isWalkoutSlot) {
+        card = rollWeightedPool([
+          { pool: BASE_ALLSTAR_POOL, rate: 65.0 },
+          { pool: BASE_STARTER_POOL, rate: 27.0 },
+          { pool: BASE_FRANCHISE_POOL, rate: 7.0 },
+          { pool: AWARD_POOL, rate: 0.8 },
+          { pool: HOF_POOL.length ? HOF_POOL : LEGEND_POOL, rate: 0.2 },
+        ], drawnIds);
+      } else {
+        card = rollWeightedPool([
+          { pool: BASE_STARTER_POOL, rate: 75.0 },
+          { pool: BASE_ALLSTAR_POOL, rate: 18.0 },
+          { pool: BASE_BENCH_POOL, rate: 5.0 },
+          { pool: BASE_FRANCHISE_POOL, rate: 1.8 },
+          { pool: AWARD_POOL, rate: 0.18 },
+          { pool: HOF_POOL.length ? HOF_POOL : LEGEND_POOL, rate: 0.02 },
+        ], drawnIds);
+      }
+    } else if (packType === 'allnba' || packType === 'franchise') {
+      // All-NBA Pack: 30% Franchise Player, 10% All-NBA 1st Team, very low specials, high Base All-Star / Starter floor
+      if (isWalkoutSlot) {
+        card = rollWeightedPool([
+          { pool: BASE_FRANCHISE_POOL, rate: 30.0 },
+          { pool: ALLNBA_POOL, rate: 10.0 },
+          { pool: BASE_ALLSTAR_POOL, rate: 45.0 },
+          { pool: BASE_STARTER_POOL, rate: 14.5 },
+          { pool: AWARD_POOL, rate: 0.45 },
+          { pool: HOF_POOL.length ? HOF_POOL : LEGEND_POOL, rate: 0.05 },
+        ], drawnIds);
+      } else {
+        card = rollWeightedPool([
+          { pool: BASE_ALLSTAR_POOL, rate: 60.0 },
+          { pool: BASE_STARTER_POOL, rate: 36.0 },
+          { pool: BASE_FRANCHISE_POOL, rate: 2.5 },
+          { pool: ALLNBA_POOL, rate: 1.0 },
+          { pool: BASE_BENCH_POOL, rate: 0.4 },
+          { pool: AWARD_POOL, rate: 0.09 },
+          { pool: HOF_POOL.length ? HOF_POOL : LEGEND_POOL, rate: 0.01 },
+        ], drawnIds);
+      }
+    } else if (packType === 'mvp') {
+      // Finals MVP Pack: High chance of Finals MVP & major award winners, with high Franchise/All-Star floor
+      if (isWalkoutSlot) {
+        card = rollWeightedPool([
+          { pool: AWARD_POOL, rate: 55.0 },
+          { pool: COMBINED_FRANCHISE_ALLNBA, rate: 30.0 },
+          { pool: BASE_ALLSTAR_POOL, rate: 10.0 },
+          { pool: HOF_POOL.length ? HOF_POOL : LEGEND_POOL, rate: 5.0 },
+        ], drawnIds);
+      } else {
+        card = rollWeightedPool([
+          { pool: COMBINED_FRANCHISE_ALLNBA, rate: 45.0 },
+          { pool: BASE_ALLSTAR_POOL, rate: 35.0 },
+          { pool: AWARD_POOL, rate: 15.0 },
+          { pool: BASE_STARTER_POOL, rate: 3.0 },
+          { pool: HOF_POOL.length ? HOF_POOL : LEGEND_POOL, rate: 2.0 },
+        ], drawnIds);
+      }
+    } else if (packType === 'hof') {
+      // Hall of Fame Pack: 10% HOF Legend walkout chance, high Award/Franchise/All-Star cascade
+      if (isWalkoutSlot) {
+        card = rollWeightedPool([
+          { pool: HOF_POOL.length ? HOF_POOL : LEGEND_POOL, rate: 10.0 },
+          { pool: AWARD_POOL, rate: 35.0 },
+          { pool: COMBINED_FRANCHISE_ALLNBA, rate: 35.0 },
+          { pool: BASE_ALLSTAR_POOL, rate: 20.0 },
+        ], drawnIds);
+      } else {
+        card = rollWeightedPool([
+          { pool: BASE_ALLSTAR_POOL, rate: 45.0 },
+          { pool: COMBINED_FRANCHISE_ALLNBA, rate: 35.0 },
+          { pool: AWARD_POOL, rate: 18.0 },
+          { pool: HOF_POOL.length ? HOF_POOL : LEGEND_POOL, rate: 2.0 },
+        ], drawnIds);
+      }
+    } else if (packType === 'dynasty') {
+      if (isWalkoutSlot) {
+        card = rollWeightedPool([
+          { pool: DYNASTY_PACK_POOL.length ? DYNASTY_PACK_POOL : LEGEND_POOL, rate: 10.0 },
+          { pool: HOF_POOL.length ? HOF_POOL : LEGEND_POOL, rate: 25.0 },
+          { pool: AWARD_POOL, rate: 35.0 },
+          { pool: BASE_FRANCHISE_POOL, rate: 20.0 },
+          { pool: BASE_ALLSTAR_POOL, rate: 10.0 },
+        ], drawnIds);
+      } else {
+        card = rollWeightedPool([
+          { pool: AWARD_POOL, rate: 35.0 },
+          { pool: BASE_FRANCHISE_POOL, rate: 35.0 },
+          { pool: BASE_ALLSTAR_POOL, rate: 20.0 },
+          { pool: HOF_POOL.length ? HOF_POOL : LEGEND_POOL, rate: 8.0 },
+          { pool: DYNASTY_PACK_POOL.length ? DYNASTY_PACK_POOL : LEGEND_POOL, rate: 2.0 },
+        ], drawnIds);
+      }
+    } else if (packType === 'scream_edition' || packType === 'scream') {
+      // Scream Edition Pack: 10% Scream chance + 10% other specials + 80% regular base cards on walkout slot
+      if (isWalkoutSlot) {
+        card = rollWeightedPool([
+          { pool: SCREAM_PACK_POOL.length ? SCREAM_PACK_POOL : BASE_FRANCHISE_POOL, rate: 10.0 },
+          { pool: AWARD_POOL, rate: 4.0 },
+          { pool: COMBINED_FRANCHISE_ALLNBA, rate: 4.0 },
+          { pool: HOF_POOL.length ? HOF_POOL : LEGEND_POOL, rate: 2.0 },
+          { pool: BASE_ALLSTAR_POOL, rate: 40.0 },
+          { pool: BASE_STARTER_POOL, rate: 35.0 },
+          { pool: BASE_BENCH_POOL, rate: 5.0 },
+        ], drawnIds);
+      } else {
+        card = rollWeightedPool([
+          { pool: SCREAM_PACK_POOL.length ? SCREAM_PACK_POOL : BASE_ALLSTAR_POOL, rate: 1.5 },
+          { pool: COMBINED_FRANCHISE_ALLNBA, rate: 2.0 },
+          { pool: AWARD_POOL, rate: 1.5 },
+          { pool: BASE_STARTER_POOL, rate: 50.0 },
+          { pool: BASE_BENCH_POOL, rate: 35.0 },
+          { pool: BASE_ALLSTAR_POOL, rate: 10.0 },
+        ], drawnIds);
+      }
+    } else if (packType === 'draft2026') {
+      card = rollWeightedPool([
+        { pool: BASE_BENCH_POOL, rate: 48 },
+        { pool: BASE_STARTER_POOL, rate: 40 },
+        { pool: DRAFT2026_POOL, rate: 10 },
+        { pool: BASE_ALLSTAR_POOL, rate: 2 },
+      ], drawnIds);
+    } else if (packType === 'galaxy' || packType === 'invincible') {
+      card = rollWeightedPool([
+        { pool: BASE_FRANCHISE_POOL, rate: 45 },
+        { pool: LEGEND_POOL, rate: 35 },
+        { pool: DYNASTY_PACK_POOL.length ? DYNASTY_PACK_POOL : LEGEND_POOL, rate: 10 },
+        { pool: ULTRA_RARE_POOL.length ? ULTRA_RARE_POOL : LEGEND_POOL, rate: 10 },
+      ], drawnIds);
+    } else {
+      card = rollWeightedPool([
+        { pool: BASE_BENCH_POOL, rate: 68 },
+        { pool: BASE_STARTER_POOL, rate: 26 },
+        { pool: BASE_ALLSTAR_POOL, rate: 6 },
+      ], drawnIds);
+    }
+
+    cards.push(card);
+    drawnIds.add(card.id);
+  }
+
+  return cards;
+}
 
 // Pre-calculate team card maps for faster achievement checking
 const TEAM_CARDS_MAP = ALL_CARDS.reduce((acc, card) => {
@@ -95,40 +340,6 @@ const ALL_TEAMS = Object.keys(TEAM_CARDS_MAP);
 export function useEngine() {
   const { collection, coins, updateGameState, updateGameStateAsync, unlockedAchievements, inventoryPacks, isSaving } = useGame();
   const { notify } = useNotification();
-
-  const generateCard = (packType: PackType): Card => {
-    const rates = DROP_RATES[packType];
-    const rand = Math.random() * 100;
-    let cumulative = 0;
-    let selectedRarity: Rarity = 'bench';
-
-    for (const { rarity, rate } of rates) {
-      cumulative += rate;
-      if (rand <= cumulative) {
-        selectedRarity = rarity;
-        break;
-      }
-    }
-
-    let pool: Card[] = [];
-    
-    // Series-specific packs
-    if (packType === 'legendary_mvp') {
-      pool = LEGENDARY_MVP_POOL;
-    } else if (packType === 'rising_star') {
-      pool = RISING_STAR_POOL;
-    } else {
-      // Standard rarity-based generation
-      pool = CARDS_BY_RARITY[selectedRarity] || [];
-    }
-    
-    // Fallback if rarity pool is empty
-    if (pool.length === 0) {
-      pool = CARDS_BY_RARITY['bench'];
-    }
-
-    return pool[Math.floor(Math.random() * pool.length)];
-  };
 
   const checkAchievements = (newCollection: Record<string, number>, currentCoins: number, currentUnlocked: string[] = [], newlyAddedCardIds: string[] = [], silent: boolean = false) => {
     let bonusCoins = 0;
@@ -179,12 +390,6 @@ export function useEngine() {
             
             if (!silent) {
               notify(achievementData);
-              bonusCoins += ach.rewardCoins;
-              if (ach.rewardPacks) {
-                ach.rewardPacks.forEach(p => {
-                  newInventoryPacks.push(p);
-                });
-              }
             }
           }
         }
@@ -215,7 +420,6 @@ export function useEngine() {
             
             if (!silent) {
               notify(achievementData);
-              newInventoryPacks.push(achievementData.packReward);
             }
           }
         }
@@ -231,13 +435,13 @@ export function useEngine() {
       checkAll(cardId);
     }
 
-    return { newlyUnlocked, bonusCoins, newInventoryPacks, newlyUnlockedIds };
+    return { newlyUnlocked, bonusCoins: 0, newInventoryPacks: [], newlyUnlockedIds };
   };
 
   const openPack = async (packType: PackType) => {
     let currentCoins = coins;
     if (packType !== 'random') {
-      const price = PACK_PRICES[packType];
+      const price = PACK_PRICES[packType as keyof typeof PACK_PRICES] || 5000;
       if (currentCoins < price) return null;
       currentCoins -= price;
     } else {
@@ -245,7 +449,7 @@ export function useEngine() {
       currentCoins += 500;
     }
 
-    const newCards = Array.from({ length: PACK_SIZES[packType] }).map(() => generateCard(packType));
+    const newCards = generatePackCards(packType);
     const newIds = newCards.map(c => c.id);
     
     // Determine which cards are new BEFORE adding to collection
@@ -259,33 +463,35 @@ export function useEngine() {
       finalCollection[id] = (finalCollection[id] || 0) + 1;
     });
     
-    // Check achievements
-    const { newlyUnlocked, bonusCoins, newInventoryPacks, newlyUnlockedIds } = checkAchievements(finalCollection, currentCoins, unlockedAchievements, newIds, false);
+    // Check achievements silently so no popups fire on ON_PACK_OPEN
+    const { newlyUnlocked, newlyUnlockedIds } = checkAchievements(finalCollection, currentCoins, unlockedAchievements, newIds, true);
 
-    // Corrected inventory merge: Group by type
-    const updatedInventory = [...inventoryPacks];
-    newInventoryPacks.forEach(pack => {
-      const existing = updatedInventory.find(p => p.type === pack.type);
-      if (existing) {
-        existing.count += (pack.count || 1);
-      } else {
-        updatedInventory.push({ ...pack, id: pack.type, count: pack.count || 1 });
+    // Attach cardIndex to each unlocked achievement in the queue
+    const newlyUnlockedWithIndex = newlyUnlocked.map(ach => {
+      let cardIndex = 0;
+      if (ach.triggeredByCardId) {
+        const idx = newCards.findIndex(c => c.id === ach.triggeredByCardId);
+        if (idx !== -1) cardIndex = idx;
       }
+      return {
+        ...ach,
+        cardIndex
+      };
     });
 
     // Batch update everything in ONE single call to ensure ONE cloud request (Local-first)
     updateGameState({
-      coins: currentCoins + bonusCoins,
+      coins: currentCoins,
       collection: finalCollection,
-      unlockedAchievements: [...unlockedAchievements, ...newlyUnlockedIds],
-      inventoryPacks: updatedInventory
+      unlockedAchievements: Array.from(new Set([...unlockedAchievements, ...newlyUnlockedIds])),
+      inventoryPacks: inventoryPacks
     });
 
-    return { cards: cardsWithNewFlag, newlyUnlocked };
+    return { cards: cardsWithNewFlag, newlyUnlocked: newlyUnlockedWithIndex };
   };
 
   const openInventoryPack = async (packId: string, packType: PackType) => {
-    const newCards = Array.from({ length: PACK_SIZES[packType] }).map(() => generateCard(packType));
+    const newCards = generatePackCards(packType);
     const newIds = newCards.map(c => c.id);
     
     // Determine which cards are new BEFORE adding to collection
@@ -299,10 +505,23 @@ export function useEngine() {
       finalCollection[id] = (finalCollection[id] || 0) + 1;
     });
     
-    // Check achievements
-    const { newlyUnlocked, bonusCoins, newInventoryPacks, newlyUnlockedIds } = checkAchievements(finalCollection, coins, unlockedAchievements, newIds, false);
+    // Check achievements silently so no popups fire on ON_PACK_OPEN
+    const { newlyUnlocked, newlyUnlockedIds } = checkAchievements(finalCollection, coins, unlockedAchievements, newIds, true);
 
-    // Handle inventory removal and additions (Grouping by type)
+    // Attach cardIndex to each unlocked achievement in the queue
+    const newlyUnlockedWithIndex = newlyUnlocked.map(ach => {
+      let cardIndex = 0;
+      if (ach.triggeredByCardId) {
+        const idx = newCards.findIndex(c => c.id === ach.triggeredByCardId);
+        if (idx !== -1) cardIndex = idx;
+      }
+      return {
+        ...ach,
+        cardIndex
+      };
+    });
+
+    // Handle inventory removal (Grouping by type)
     const currentInventory = [...inventoryPacks];
     const packIndex = currentInventory.findIndex(p => p.id === packId);
     if (packIndex !== -1) {
@@ -313,24 +532,15 @@ export function useEngine() {
       }
     }
 
-    newInventoryPacks.forEach(pack => {
-      const existing = currentInventory.find(p => p.type === pack.type);
-      if (existing) {
-        existing.count += (pack.count || 1);
-      } else {
-        currentInventory.push({ ...pack, id: pack.type, count: pack.count || 1 });
-      }
-    });
-
     // Local-first update
     updateGameState({
-      coins: coins + bonusCoins,
+      coins: coins,
       collection: finalCollection,
-      unlockedAchievements: [...unlockedAchievements, ...newlyUnlockedIds],
+      unlockedAchievements: Array.from(new Set([...unlockedAchievements, ...newlyUnlockedIds])),
       inventoryPacks: currentInventory
     });
 
-    return { cards: cardsWithNewFlag, newlyUnlocked };
+    return { cards: cardsWithNewFlag, newlyUnlocked: newlyUnlockedWithIndex };
   };
 
   const generateDraftOptions = (count: number, position: string | null, excludedIds: string[], isElite: boolean = false, isCaptain: boolean = false): Card[] => {
@@ -349,7 +559,10 @@ export function useEngine() {
       let pool = ALL_CARDS.filter(c => {
         if (seenIds.has(c.id)) return false;
         if (draftedNames.has(c.name)) return false; // Prevent duplicate players by name
-        if (c.rarity === 'coach') return false;
+        
+        // STRICT PLAYER-ONLY FILTER
+        if (c.rarity === 'coach' || c.rarity === 'logo' || c.rarity === 'arena') return false;
+        if (['Coach', 'Logo', 'Arena', 'Coach of the Year'].includes(c.category)) return false;
         if (['Duo', 'Dynasty', 'Big Three'].includes(c.category)) return false; 
         
         if (isCaptain) {
@@ -376,12 +589,12 @@ export function useEngine() {
         return selectedRarities.includes(c.rarity);
       });
 
-      // Fallback if pool is empty
       if (pool.length === 0) {
         pool = ALL_CARDS.filter(c => {
           if (seenIds.has(c.id)) return false;
           if (draftedNames.has(c.name)) return false; // Still exclude by name in fallback
-          if (c.rarity === 'coach') return false;
+          if (c.rarity === 'coach' || c.rarity === 'logo' || c.rarity === 'arena') return false;
+          if (['Coach', 'Logo', 'Arena', 'Coach of the Year'].includes(c.category)) return false;
           if (['Duo', 'Dynasty', 'Big Three'].includes(c.category)) return false;
           if (isCaptain) return (c.stats?.ovr || 0) >= 90; // Slightly lower threshold if empty
           if (position && c.position !== position) return false;
@@ -391,7 +604,7 @@ export function useEngine() {
 
       // Final fallback: allow duplicates if absolutely necessary (shouldn't happen with large pool)
       if (pool.length === 0) {
-        pool = ALL_CARDS.filter(c => !seenIds.has(c.id) && c.rarity !== 'coach');
+        pool = ALL_CARDS.filter(c => !seenIds.has(c.id) && c.rarity !== 'coach' && c.rarity !== 'logo' && c.rarity !== 'arena' && !['Coach', 'Logo', 'Arena'].includes(c.category));
       }
 
       const selectedCard = pool[Math.floor(Math.random() * pool.length)];

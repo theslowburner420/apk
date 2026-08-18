@@ -1,6 +1,6 @@
-export type Rarity = 'bench' | 'starter' | 'allstar' | 'franchise' | 'legend' | 'coach' | 'dpoy' | 'roty' | 'record' | 'rookie' | 'logo' | 'arena' | 'draft2026' | 'scoring_champ' | 'hof' | 'coy' | 'rising_star' | 'allnba_1st';
+export type Rarity = 'bench' | 'starter' | 'allstar' | 'franchise' | 'legend' | 'coach' | 'dpoy' | 'roty' | 'record' | 'logo' | 'arena' | 'draft2026' | 'scoring_champ' | 'hof' | 'coy' | 'allnba_1st' | 'invincible' | 'galaxy' | 'legend_sbc' | 'icon_sbc' | 'moments_sbc' | 'future_star' | '6moy' | 'mip' | 'mvp' | 'fmvp';
 
-export type CardCategory = 'Base' | 'Award' | 'Moment' | 'Duo' | 'Coach' | 'Dynasty' | 'X-Factor' | 'NBA Record' | 'Rookie' | 'All-Star MVP' | 'Finals MVP' | 'Logo' | 'Arena' | 'Draft 2026' | 'Scoring Champion' | 'Hall of Fame' | 'Coach of the Year' | 'Rising Star' | 'All-NBA 1st Team';
+export type CardCategory = 'Base' | 'Award' | 'Moment' | 'Duo' | 'Coach' | 'Dynasty' | 'X-Factor' | 'NBA Record' | 'All-Star MVP' | 'Finals MVP' | 'Logo' | 'Arena' | 'Draft 2026' | 'Scoring Champion' | 'Hall of Fame' | 'Coach of the Year' | 'All-NBA 1st Team' | 'MVP' | 'DPOY' | 'ROY' | '6MOTY' | 'MIP' | 'Scream Edition';
 
 export type RoleTier = 'S' | 'A' | 'B' | 'C' | 'D';
 
@@ -18,6 +18,8 @@ export interface Card {
   category: CardCategory;
   subtitle: string;
   series?: string;
+  season?: string;
+  year?: string;
   isHistorical: boolean;
   pts: number;
   reb: number;
@@ -28,19 +30,27 @@ export interface Card {
     rebounds: number;
     assists: number;
     ovr: number;
+    potential?: number;
+    draftPotential?: string;
   };
-  description: string;
+  age?: number;
+  description?: string;
   momentTitle?: string;
   momentDate?: string;
   quote: string;
   imageUrl: string;
+  imagePosition?: string;
   isNew?: boolean;
   coach?: string;
   player2Id?: number;
   teamLogoUrl?: string;
+  isSpecialSBC?: boolean;
+  englishContext?: string;
+  achievements?: string[];
+  signatureStats?: Array<{ label: string; value: string | number; color?: string }>;
 }
 
-export type ViewType = 'collection' | 'open' | 'packs' | 'rewards' | 'shop' | 'profile' | 'home' | 'draft' | 'trading' | 'career';
+export type ViewType = 'collection' | 'open' | 'packs' | 'rewards' | 'shop' | 'profile' | 'home' | 'draft' | 'trading' | 'career' | 'sbc';
 
 export interface Achievement {
   id: string;
@@ -126,9 +136,9 @@ export interface Milestone {
 
 export interface PlayerContract {
   cardId: string;
-  yearsLeft: number; // 1-5
-  salary: number; // millions $
-  type: 'rookie' | 'veteran' | 'max' | 'mid-level' | 'minimum';
+  yearsLeft: number;
+  salary: number;
+  type: 'max' | 'supermax' | 'mid' | 'minimum' | 'rookie' | 'two-way';
   canExtend: boolean;
   canTrade: boolean;
 }
@@ -235,6 +245,94 @@ export interface FranchiseState {
   gamesSinceWaiverRefresh?: number;
 }
 
+export interface SbcRequirement {
+  type: 
+    | 'MIN_RARITY' 
+    | 'EXACT_RARITY' 
+    | 'POSITION' 
+    | 'MIN_OVR' 
+    | 'MAX_OVR'
+    | 'TOTAL_CARDS' 
+    | 'UNIQUE_PLAYERS' 
+    | 'TEAM_OVR_MIN' 
+    | 'SAME_TEAM_MIN' 
+    | 'SAME_CONF_MIN' 
+    | 'MAX_TEAMS'
+    | 'SPECIFIC_PLAYER_NAME'
+    | 'SPECIFIC_TEAM'
+    | 'SPECIAL_CARDS_MIN'
+    | 'CATEGORY';
+  value: any;
+  count?: number;
+  playerName?: string;
+  minOvr?: number;
+  maxOvr?: number;
+  edition?: string;
+  era?: string;
+  teamsList?: string[];
+  playersList?: string[];
+  description?: string;
+}
+
+export interface SbcSegmentReward {
+  type: 'coins' | 'pack' | 'both';
+  coins?: number;
+  packType?: string;
+  packName?: string;
+  packImage?: string;
+  description: string;
+}
+
+export interface SbcSegment {
+  id: string;
+  name: string;
+  description: string;
+  requirements: SbcRequirement[];
+  cardsRequired: number;
+  slotPositions?: string[];
+  segmentReward: SbcSegmentReward;
+}
+
+export interface SbcGroup {
+  id: string;
+  name: string;
+  description: string;
+  category: 'dynasty' | 'hof_legends' | 'franchise_icons' | 'fan_favourites' | 'rookie_series' | 'clutch_moments' | string;
+  difficulty: 'bronze' | 'silver' | 'gold' | 'elite' | 'legendary';
+  type: 'permanent' | 'limited';
+  expiresAt: string | null;
+  reward: {
+    playerName: string;
+    rarity: Rarity;
+    ovr: number;
+    imageUrl?: string;
+    playerId?: string;
+  };
+  segments: SbcSegment[];
+  isActive: boolean;
+}
+
+export interface SbcChallenge {
+  id: string;
+  name: string;
+  description: string;
+  category?: 'dynasty' | 'rookie_series' | 'fan_favourites' | 'hof_legends' | 'franchise_icons' | 'clutch_moments' | string;
+  difficulty: 'bronze' | 'silver' | 'gold' | 'elite' | 'legendary';
+  type: 'permanent' | 'limited';
+  expiresAt: string | null;
+  requirements: SbcRequirement[];
+  reward: {
+    playerName: string;
+    rarity: Rarity;
+    ovr: number;
+    imageUrl?: string;
+    playerId?: string;
+  };
+  isActive: boolean;
+  cardsRequired: number;
+  slotPositions?: string[];
+}
+
 export interface GameState {
   user: User | null;
   coins: number;
@@ -247,5 +345,8 @@ export interface GameState {
   claimedDays: number[]; // Array of day indices (1-7)
   inventoryPacks: InventoryPack[];
   isPremium: boolean;
+  hasLifetimeNoAds: boolean;
+  subscriptionExpiry: string | null;
   franchise?: FranchiseState;
+  completedSbcs?: string[];
 }

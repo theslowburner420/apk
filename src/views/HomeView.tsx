@@ -1,188 +1,254 @@
-import React from 'react';
-import { motion } from 'motion/react';
-import { Zap, Trophy, Sparkles, Star, RefreshCw, Building, User as UserIcon } from 'lucide-react';
+import React, { useState } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
 import { useGame } from '../context/GameContext';
+import { isScreamEditionActive, SCREAM_EDITION_CONFIG } from '../constants/screamEdition';
+import { Eye, EyeOff } from 'lucide-react';
 
 const HomeView: React.FC = () => {
-  const { setCurrentView } = useGame();
+  const { setCurrentView, isPremium } = useGame();
+  const isScreamActive = isScreamEditionActive(isPremium);
+  const [isBannerHidden, setIsBannerHidden] = useState<boolean>(() => {
+    return localStorage.getItem('hoops_halloween_banner_hidden') === 'true';
+  });
+
+  const toggleBannerVisibility = (hidden: boolean) => {
+    setIsBannerHidden(hidden);
+    localStorage.setItem('hoops_halloween_banner_hidden', hidden ? 'true' : 'false');
+  };
+
+  const openHalloweenModal = () => {
+    window.dispatchEvent(new CustomEvent('open-halloween-modal'));
+  };
 
   return (
-    <div className="h-full w-full flex flex-col bg-black overflow-hidden relative">
-      {/* Split Screen Container */}
-      <div className="flex-1 flex flex-col gap-2 p-2 md:p-3 w-full h-full overflow-y-auto no-scrollbar pb-24">
-        
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-2 h-auto md:h-[60%] shrink-0">
+    <div className="w-full flex flex-col bg-black">
+      {/* Home Container */}
+      <div className="flex-1 flex flex-col gap-1.5 md:gap-4 p-1.5 md:p-6 pb-6 md:pb-6 max-w-7xl mx-auto w-full">
+        {/* Halloween Scream Edition Special Event Banner / Minimized Strip */}
+        {isScreamActive && (
+          <AnimatePresence mode="wait">
+            {!isBannerHidden ? (
+              <motion.div
+                key="halloween-banner-full"
+                initial={{ opacity: 0, y: -10, height: 'auto' }}
+                animate={{ opacity: 1, y: 0, height: 'auto' }}
+                exit={{ opacity: 0, y: -10, height: 0 }}
+                transition={{ duration: 0.25 }}
+                className="relative group overflow-hidden rounded-2xl md:rounded-[2rem] border border-orange-500/40 bg-gradient-to-r from-orange-950/90 via-purple-950/70 to-black p-3 md:p-4 flex items-center justify-between shadow-lg shadow-orange-950/50 hover:border-orange-400 transition-all"
+              >
+                <div 
+                  className="flex items-center gap-3 z-10 cursor-pointer min-w-0 flex-1 pr-2"
+                  onClick={openHalloweenModal}
+                >
+                  <div className="w-12 h-16 rounded-lg overflow-hidden border-2 border-orange-500/80 shrink-0 bg-black shadow-[0_0_15px_rgba(249,115,22,0.6)]">
+                    <img 
+                      src={SCREAM_EDITION_CONFIG.PACK_IMAGE} 
+                      alt="Scream Edition" 
+                      className="w-full h-full object-cover" 
+                      referrerPolicy="no-referrer"
+                    />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="px-2 py-0.5 rounded-full bg-orange-500 text-black text-[8px] md:text-[10px] font-black uppercase tracking-wider shadow">
+                        🎃 Special Event Active
+                      </span>
+                      <span className="text-[9px] md:text-[10px] text-orange-300 font-bold uppercase tracking-widest hidden sm:inline">
+                        LIMITED TIME
+                      </span>
+                    </div>
+                    <h3 className="text-sm md:text-lg font-black text-white uppercase tracking-tight mt-0.5 flex items-center gap-1.5 truncate">
+                      SCREAM EDITION
+                      <span className="text-[10px] text-orange-400 font-bold tracking-widest hidden sm:inline">• VIEW ALL CARDS</span>
+                    </h3>
+                    <p className="text-[10px] md:text-xs text-zinc-300 truncate">
+                      Tap to view all exclusive Halloween cards & special packs!
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-1.5 md:gap-2 z-10 shrink-0">
+                  <button 
+                    onClick={openHalloweenModal}
+                    className="px-3 py-1.5 md:px-4 md:py-2 rounded-xl bg-orange-500 hover:bg-orange-400 text-black font-black text-xs uppercase tracking-wider shrink-0 transition-transform active:scale-95 shadow-[0_0_15px_rgba(249,115,22,0.5)] whitespace-nowrap"
+                  >
+                    View Event
+                  </button>
+
+                  <button
+                    onClick={() => toggleBannerVisibility(true)}
+                    title="Hide banner (can be shown again anytime)"
+                    className="p-1.5 md:p-2 rounded-xl bg-black/60 hover:bg-zinc-800 border border-white/10 text-zinc-400 hover:text-white transition-colors shrink-0"
+                    aria-label="Hide Halloween banner"
+                  >
+                    <EyeOff size={15} />
+                  </button>
+                </div>
+              </motion.div>
+            ) : (
+              <motion.div
+                key="halloween-banner-collapsed"
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.95 }}
+                className="w-full flex items-center justify-between px-3 py-1.5 rounded-xl border border-orange-500/30 bg-gradient-to-r from-orange-950/40 via-purple-950/30 to-black text-xs shadow-sm"
+              >
+                <div 
+                  onClick={openHalloweenModal}
+                  className="flex items-center gap-2 cursor-pointer text-orange-300 hover:text-orange-200 transition-colors min-w-0"
+                >
+                  <span className="text-sm">🎃</span>
+                  <span className="text-[11px] font-black uppercase tracking-wider truncate">
+                    Halloween Scream Event Active
+                  </span>
+                  <span className="text-[9.5px] px-1.5 py-0.2 rounded bg-orange-500/20 text-orange-400 font-bold uppercase hidden xs:inline">
+                    9 Cards
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    onClick={openHalloweenModal}
+                    className="text-[10px] font-black uppercase tracking-wider text-orange-400 hover:text-orange-300 underline underline-offset-2"
+                  >
+                    View Popup
+                  </button>
+                  <span className="text-zinc-600">•</span>
+                  <button
+                    onClick={() => toggleBannerVisibility(false)}
+                    className="px-2 py-0.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 border border-white/10 text-[10px] font-bold uppercase tracking-wider text-zinc-300 flex items-center gap-1 transition-colors"
+                  >
+                    <Eye size={12} />
+                    <span>Show Banner</span>
+                  </button>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        )}
+
+
+        {/* Top Section: Pack Opener & Hoops Draft side by side */}
+        <div className="grid grid-cols-2 gap-1.5 md:gap-4">
           {/* Bloque A: Pack Opener */}
           <motion.div 
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
-            className="relative group cursor-pointer overflow-hidden rounded-3xl border border-zinc-900 bg-zinc-950 flex flex-col items-center justify-center min-h-[200px]"
+            className="relative group cursor-pointer overflow-hidden rounded-2xl md:rounded-[2.5rem] border border-white/5 bg-zinc-900 aspect-square md:aspect-video flex flex-col items-center justify-center"
             onClick={() => setCurrentView('open')}
           >
-            {/* Background Image/Glow */}
-            <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_rgba(245,158,11,0.15)_0%,_transparent_70%)]" />
-            
-            <div className="relative flex flex-col items-center justify-center p-4 text-center space-y-4">
-              <div className="w-16 h-16 md:w-20 md:h-20 bg-amber-500 rounded-2xl flex items-center justify-center shadow-[0_0_40px_rgba(245,158,11,0.3)] group-hover:scale-110 transition-transform duration-500">
-                <Zap size={32} md:size={40} className="text-black" fill="currentColor" />
-              </div>
-              
-              <div className="space-y-1">
-                <h2 className="text-2xl md:text-3xl font-black italic uppercase tracking-tighter text-white leading-none">
-                  Pack<br/>Opener
-                </h2>
-                <p className="text-[8px] md:text-[9px] font-black uppercase tracking-[0.3em] text-amber-500">
-                  Open Elite Packs
-                </p>
-              </div>
-
-              <button className="px-5 py-2 bg-white text-black rounded-full font-black uppercase text-[9px] tracking-widest group-hover:bg-amber-400 transition-colors">
-                Open Now
-              </button>
+            {/* Full Card Background Image */}
+            <div className="absolute inset-0 z-0">
+              <img 
+                src="https://i.postimg.cc/vHMy0CHK/generated-image.png" 
+                alt="Pack Opener" 
+                className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
+                referrerPolicy="no-referrer"
+              />
+              <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
             </div>
-
-            {/* Decorative Elements */}
-            <div className="absolute bottom-2 right-2 opacity-10 group-hover:opacity-20 transition-opacity">
-              <Sparkles size={60} md:size={100} />
+            
+            {/* Neon FREE indicator */}
+            <div className="absolute top-2 right-2 md:top-4 md:right-4 z-20">
+               <motion.div 
+                 animate={{ scale: [1, 1.1, 1] }}
+                 transition={{ duration: 2, repeat: Infinity }}
+                 className="px-2 py-0.5 md:px-4 md:py-1 bg-black border border-amber-500/50 rounded-full shadow-[0_0_10px_#f59e0b] -rotate-6"
+               >
+                  <span className="text-[7px] md:text-xs font-black text-amber-500 tracking-widest uppercase">FREE</span>
+               </motion.div>
             </div>
           </motion.div>
 
-          {/* Bloque B: HoopsDraft */}
+          {/* Bloque B: Hoops Draft */}
           <motion.div 
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
-            className="relative group cursor-pointer overflow-hidden rounded-3xl border border-zinc-900 bg-zinc-950 flex flex-col items-center justify-center min-h-[200px]"
+            transition={{ delay: 0.05 }}
+            className="relative group cursor-pointer overflow-hidden rounded-2xl md:rounded-[2.5rem] border border-white/5 bg-zinc-900 aspect-square md:aspect-video flex flex-col items-center justify-center"
             onClick={() => setCurrentView('draft')}
           >
-            {/* Background Image/Glow - Different colors for Draft */}
-            <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_rgba(59,130,246,0.15)_0%,_transparent_70%)]" />
-            
-            <div className="relative flex flex-col items-center justify-center p-4 text-center space-y-4">
-              <div className="w-16 h-16 md:w-20 md:h-20 bg-blue-600 rounded-2xl flex items-center justify-center shadow-[0_0_40px_rgba(59,130,246,0.3)] group-hover:scale-110 transition-transform duration-500">
-                <Trophy size={32} md:size={40} className="text-white" />
-              </div>
-              
-              <div className="space-y-1">
-                <h2 className="text-2xl md:text-3xl font-black italic uppercase tracking-tighter text-white leading-none">
-                  Hoops<br/>Draft
-                </h2>
-                <p className="text-[8px] md:text-[9px] font-black uppercase tracking-[0.3em] text-blue-400">
-                  Build Your Dynasty
-                </p>
-              </div>
-
-              <motion.button 
-                animate={{ 
-                  scale: [1, 1.05, 1],
-                  boxShadow: [
-                    "0 0 0px rgba(59,130,246,0)",
-                    "0 0 20px rgba(59,130,246,0.4)",
-                    "0 0 0px rgba(59,130,246,0)"
-                  ]
-                }}
-                transition={{ duration: 2, repeat: Infinity }}
-                className="px-5 py-2 bg-blue-600 text-white rounded-full font-black uppercase text-[9px] tracking-widest hover:bg-blue-500 transition-colors"
-              >
-                Play Now
-              </motion.button>
-            </div>
-
-            {/* Decorative Elements */}
-            <div className="absolute bottom-2 right-2 opacity-10 group-hover:opacity-20 transition-opacity">
-              <Star size={60} md:size={100} />
+            {/* Full Card Background Image */}
+            <div className="absolute inset-0 z-0">
+              <img 
+                src="https://i.postimg.cc/TwG0zjyz/generated-image-(1).png" 
+                alt="Hoops Draft" 
+                className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
+                referrerPolicy="no-referrer"
+              />
+              <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
             </div>
           </motion.div>
         </div>
 
-        {/* Bloque C: Online Trading (NEW) */}
-        <motion.div 
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="relative group cursor-pointer overflow-hidden rounded-3xl border border-zinc-900 bg-zinc-950 flex items-center justify-between p-6 sm:p-8 min-h-[160px] shrink-0"
-          onClick={() => setCurrentView('trading')}
-        >
-          {/* Background Image/Glow - Purple/Teal for Trading */}
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_70%_50%,_rgba(168,85,247,0.15)_0%,_transparent_70%)]" />
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_50%,_rgba(45,212,191,0.1)_0%,_transparent_70%)]" />
-          
-          <div className="relative flex items-center gap-6 sm:gap-10">
-            <div className="w-16 h-16 sm:w-20 sm:h-20 bg-purple-600 rounded-3xl flex items-center justify-center shadow-[0_0_40px_rgba(168,85,247,0.3)] group-hover:rotate-12 transition-transform duration-500">
-              <RefreshCw size={32} sm:size={40} className="text-white" />
+        {/* Bottom Section: Trading, Career/Franchise, Puzzles/SBC */}
+        {/* On mobile, they are strips (aspect-[3/1] or stacked nicely); on desktop, they render side-by-side! */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-1.5 md:gap-4">
+          {/* Bloque C: Live Trading */}
+          <motion.div 
+            initial={{ opacity: 0, y: 15 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.1 }}
+            className="relative group cursor-pointer overflow-hidden rounded-2xl md:rounded-[2.5rem] border border-white/5 bg-zinc-950 aspect-[3/1] md:aspect-auto md:h-[180px] lg:h-[240px]"
+            onClick={() => setCurrentView('trading')}
+          >
+            <div className="absolute inset-0 z-0">
+              <img 
+                src="https://i.postimg.cc/PJ7m51xb/generated-image-(2).png" 
+                alt="Live Trading" 
+                className="w-full h-full object-cover opacity-80 transition-transform duration-700 group-hover:scale-110"
+                referrerPolicy="no-referrer"
+              />
+              <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
             </div>
-            
-            <div className="space-y-1">
-              <h2 className="text-3xl sm:text-4xl font-black italic uppercase tracking-tighter text-white leading-none">
-                Online<br/>Trading
-              </h2>
-              <p className="text-[10px] sm:text-xs font-black uppercase tracking-[0.3em] text-purple-400">
-                Real-Time Exchange
-              </p>
+          </motion.div>
+    
+          {/* Bloque D: Franchise Mode */}
+          <motion.div 
+            initial={{ opacity: 0, y: 15 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.15 }}
+            className="relative group cursor-pointer overflow-hidden rounded-2xl md:rounded-[2.5rem] border border-white/5 bg-zinc-950 aspect-[3/1] md:aspect-auto md:h-[180px] lg:h-[240px]"
+            onClick={() => setCurrentView('career')}
+          >
+            <div className="absolute inset-0 z-0">
+              <img 
+                src="https://i.postimg.cc/CxGfW3j7/generated-image-(3).png" 
+                alt="Franchise Mode" 
+                className="w-full h-full object-cover opacity-80 transition-transform duration-700 group-hover:scale-110"
+                referrerPolicy="no-referrer"
+              />
+              <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
             </div>
-          </div>
 
-          <div className="relative hidden sm:flex flex-col items-center gap-3">
-            <div className="flex -space-x-3">
-              {[1, 2, 3].map(i => (
-                <div key={i} className="w-10 h-14 bg-zinc-800 rounded-lg border border-zinc-700 shadow-xl flex items-center justify-center rotate-[-10deg] first:rotate-[-20deg] last:rotate-[0deg] overflow-hidden">
-                  <div className="w-full h-full bg-gradient-to-br from-zinc-700 to-zinc-900 opacity-50" />
-                </div>
-              ))}
+            <div className="absolute top-2 right-2 md:top-4 md:right-4 z-10">
+              <span className="px-2 py-0.5 md:px-3 md:py-1 bg-amber-500 text-black text-[7px] md:text-[10px] font-black rounded-full uppercase italic">BETA</span>
             </div>
-            <button className="px-6 py-2.5 bg-purple-600 text-white rounded-full font-black uppercase text-[10px] tracking-widest hover:bg-purple-500 hover:scale-105 transition-all shadow-lg active:scale-95">
-              Enter Lobby
-            </button>
-          </div>
+          </motion.div>
 
-          {/* Mobile Button Only */}
-          <button className="sm:hidden relative w-10 h-10 bg-white text-black rounded-full flex items-center justify-center shadow-lg active:scale-90">
-             <Star size={16} fill="currentColor" />
-          </button>
-        </motion.div>
-  
-        {/* Bloque D: Franchise Mode (NEW EXPANSION) */}
-        <motion.div 
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.1 }}
-          className="relative group cursor-pointer overflow-hidden rounded-3xl border border-zinc-900 bg-zinc-950 flex items-center justify-between p-6 sm:p-8 min-h-[160px] shrink-0"
-          onClick={() => setCurrentView('career')}
-        >
-          {/* Background Image/Glow - Emerald/Forest for Franchise */}
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_70%_50%,_rgba(16,185,129,0.15)_0%,_transparent_70%)]" />
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_50%,_rgba(5,150,105,0.1)_0%,_transparent_70%)]" />
-          
-          <div className="relative flex items-center gap-6 sm:gap-10">
-            <div className="w-16 h-16 sm:w-20 sm:h-20 bg-emerald-600 rounded-3xl flex items-center justify-center shadow-[0_0_40px_rgba(16,185,129,0.3)] group-hover:scale-110 transition-transform duration-500">
-              <Building size={32} sm:size={40} className="text-white" />
+          {/* Bloque E: SBC Mode */}
+          <motion.div 
+            initial={{ opacity: 0, y: 15 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.2 }}
+            className="relative group cursor-pointer overflow-hidden rounded-2xl md:rounded-[2.5rem] border border-white/5 bg-zinc-950 aspect-[3/1] md:aspect-auto md:h-[180px] lg:h-[240px]"
+            onClick={() => setCurrentView('sbc')}
+          >
+            <div className="absolute inset-0 z-0">
+              <img 
+                src="https://i.postimg.cc/2SkZNHTG/generated-image-(4).png" 
+                alt="SBC" 
+                className="w-full h-full object-cover opacity-80 transition-transform duration-700 group-hover:scale-110"
+                referrerPolicy="no-referrer"
+              />
+              <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
             </div>
-            
-            <div className="space-y-1">
-              <h2 className="text-3xl sm:text-4xl font-black italic uppercase tracking-tighter text-white leading-none">
-                Franchise<br/>Mode
-              </h2>
-              <p className="text-[10px] sm:text-xs font-black uppercase tracking-[0.3em] text-emerald-400">
-                Front Office RPG
-              </p>
+
+            <div className="absolute top-2 right-2 md:top-4 md:right-4 z-10">
+              <span className="px-2 py-0.5 md:px-3 md:py-1 bg-amber-500 text-black text-[7px] md:text-[10px] font-black rounded-full uppercase italic">BETA</span>
             </div>
-          </div>
-
-          <div className="relative hidden sm:flex flex-col items-center gap-3">
-             <div className="flex items-center gap-1">
-                {[1, 2, 3, 4, 5].map(i => (
-                  <Star key={i} size={14} className="text-emerald-500" fill="currentColor" />
-                ))}
-             </div>
-            <button className="px-6 py-2.5 bg-emerald-600 text-white rounded-full font-black uppercase text-[10px] tracking-widest hover:bg-emerald-500 hover:scale-105 transition-all shadow-lg active:scale-95">
-              Enter Office
-            </button>
-          </div>
-
-          {/* Mobile Button Only */}
-          <button className="sm:hidden relative w-10 h-10 bg-white text-black rounded-full flex items-center justify-center shadow-lg active:scale-90">
-             <Zap size={16} fill="currentColor" />
-          </button>
-        </motion.div>
-
+          </motion.div>
+        </div>
       </div>
     </div>
   );
