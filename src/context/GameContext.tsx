@@ -3,7 +3,7 @@ import { GameState, ViewType, Card, User, FranchiseState, CareerMatch as SeasonM
 import { ACHIEVEMENTS } from '../constants/achievements';
 import { supabase } from '../lib/supabase';
 import { Capacitor } from '@capacitor/core';
-import { GoogleAuth } from '@codetrix-studio/capacitor-google-auth';
+import { SocialLogin } from '@capgo/capacitor-social-login';
 
 interface GameContextType extends GameState {
   isAuthLoading: boolean;
@@ -643,6 +643,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
     let authSubscription: any = null;
 
     async function initializeAuth() {
+    await SocialLogin.initialize({ google: { webClientId: "103038526514-78geh3ibvupkth5rl3sf26kllf7650sd.apps.googleusercontent.com" } });
       try {
         console.log('🔄 Mount: Retrieving session via getSession() first...');
         const { data: { session }, error } = await supabase!.auth.getSession();
@@ -781,10 +782,10 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (!supabase) return;
     try {
       if (Capacitor.isNativePlatform()) {
-        const googleUser = await GoogleAuth.signIn();
+        const res = await SocialLogin.login({ provider: 'google', options: { scopes: ['email', 'profile'] } });
         await supabase.auth.signInWithIdToken({
           provider: 'google',
-          token: googleUser.authentication.idToken,
+          token: res.result.idToken,
         });
       } else {
         await supabase.auth.signInWithOAuth({
